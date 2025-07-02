@@ -5,6 +5,7 @@ import pandas as pd
 import re
 import sys
 import os
+from dotenv import load_dotenv
 
 
 from reportlab.lib import colors
@@ -15,14 +16,23 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
 
 
+# warnings.filterwarnings("ignore")
+
+# === Load environment variables ===
+load_dotenv()
+GCS_API_KEY = os.getenv("GCS_API_KEY")
+GCS_CX = os.getenv("GCS_CX")
+PC_API_KEY = os.getenv("PINECONE_API_KEY")
+
+
 # Objects initialization and calling
 GCS = GoogleCustomSearch(
-    api_key='AIzaSyDpsYxahm-USx131yjLGctwFzvufj7Yee8', cx="94086cd10dad34239")
+    api_key=GCS_API_KEY, cx=GCS_CX)
 
-PC = PineconeDB(api_key='1bad4ac6-a29a-4dfd-9dd6-b8a5803a7901')
+PC = PineconeDB(api_key=PC_API_KEY)
 def reset_pinecone_conn():
     global PC
-    PC = PineconeDB(api_key='1bad4ac6-a29a-4dfd-9dd6-b8a5803a7901')
+    PC = PineconeDB(api_key=PC_API_KEY)
 
 TFUtils = TransformersUtils(
     model_id='bert-base-uncased', SentenceTransformer_id='multi-qa-MiniLM-L6-cos-v1')
