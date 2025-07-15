@@ -1,0 +1,18 @@
+{
+  "step_id": "240f1bcf-36d3-400b-9670-62ef821cb056",
+  "step_name": "router",
+  "input": {
+    "args": [
+      "What is an LLM, how does  it work?"
+    ],
+    "kwargs": {}
+  },
+  "output": {
+    "result": "answer"
+  },
+  "metadata": {},
+  "timestamp": "2025-07-05T13:59:37.303868",
+  "duration_ms": 2807.921,
+  "success": true,
+  "error": null
+}

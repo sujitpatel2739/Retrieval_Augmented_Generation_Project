@@ -1,0 +1,18 @@
+{
+  "step_id": "975b53c2-3972-4c76-8192-b54380f9e481",
+  "step_name": "router",
+  "input": {
+    "args": [
+      "I want to know about LLMs."
+    ],
+    "kwargs": {}
+  },
+  "output": {
+    "result": "clarify"
+  },
+  "metadata": {},
+  "timestamp": "2025-07-05T03:01:41.926409",
+  "duration_ms": 4206.039,
+  "success": true,
+  "error": null
+}

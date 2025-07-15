@@ -1,0 +1,11 @@
+{
+  "workflow_id": "e953047e-2f16-4c2a-aaa3-246b17addef6",
+  "query": "I want to know about LLMs.",
+  "step_ids": [
+    "975b53c2-3972-4c76-8192-b54380f9e481"
+  ],
+  "start_time": "2025-07-05T03:01:41.926409",
+  "end_time": "2025-07-05T03:01:46.132448",
+  "success": true,
+  "final_response": null
+}
