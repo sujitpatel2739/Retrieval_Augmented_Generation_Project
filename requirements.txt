@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pydantic
+pydantic-settings
+openai
+sentence_transformers
+weaviate-client>=4.0.0
+numpy
+python-dotenv
+requests

@@ -1,0 +1,33 @@
+from dataclasses import dataclass
+from typing import List, Dict, Optional
+import numpy as np
+from enum import Enum
+
+@dataclass
+class Document:
+    text: str
+    embedding: List
+    metadata: Dict = None
+
+@dataclass
+class SearchResult:
+    text: str
+    metadata: Dict
+    score: float
+
+@dataclass
+class Citation:
+    text: str
+    metadata: Dict
+    relevance_score: float
+
+@dataclass
+class RAGResponse:
+    answer: str
+    citations: List[Citation]
+    confidence_score: float 
+
+class QueryIntent(Enum):
+    ANSWER = "answer"          # Direct answer using RAG
+    CLARIFY = "clarify"       # Need more information
+    REJECT = "reject"         # Cannot/should not answer
