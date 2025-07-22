@@ -6,7 +6,6 @@ from enum import Enum
 @dataclass
 class Document:
     text: str
-    embedding: List
     metadata: Dict = None
 
 @dataclass

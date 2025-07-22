@@ -1,9 +1,14 @@
 .env
 venv/
 __pycache__/
-
+.pytest_cache/
 # ignore Pycharm/IntelliJ configuration files
 .idea
 
 #ignore generated logs
 logs/*
+
+sample.pdf
+sample.docx
+sample.html
+sample.txt

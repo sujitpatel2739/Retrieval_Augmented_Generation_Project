@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Legit-RAG
 
 A modular Retrieval-Augmented Generation (RAG) system built with FastAPI, Qdrant, and OpenAI.
@@ -188,4 +189,6 @@ Key configuration options in `config.py`:
 5. Caching layer for frequent queries
 6. Batch document processing
 7. Advanced result ranking strategies
+=======
+>>>>>>> 104fdff3b197ca3c052eb6f1af2a1178e8f2814e
 

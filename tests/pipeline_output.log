@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 Pipeline Run Started: 2025-07-15 22:01:18
 Current working directory: E:\RAG-main
 Test directory files: ['debug_preprocessor.py', 'pipeline_output.log', 'sample.docx', 'sample.html', 'sample.pdf', 'sample.txt', 'test_preprocessor.py', '__init__.py', '__pycache__']
@@ -144,3 +145,151 @@ txt: FAIL
     - Chunk 0 exceeds 300 tokens (12846) for txt
 
 Overall result: Some units failed
+=======
+Pipeline Run Started: 2025-07-15 22:01:18
+Current working directory: E:\RAG-main
+Test directory files: ['debug_preprocessor.py', 'pipeline_output.log', 'sample.docx', 'sample.html', 'sample.pdf', 'sample.txt', 'test_preprocessor.py', '__init__.py', '__pycache__']
+
+
+==================================================
+Processing pdf file: tests\sample.pdf
+==================================================
+Step 1: Extracting with UniversalExtractor
+Extracted Text (first 500 chars):
+Copyright Notice These slides are distributed under the Creative Commons License. DeepLearning.AI makes these slides available for educational purposes. You may not use or distribute these slides for commercial purposes. You may make copies of these slides and use or distribute them for educational purposes as long as you cite DeepLearning.AI as the source of the slides. For the rest of the details of the license, see https://creativecommons.org/licenses/by-sa/2.0/legalcode Image Classification ...
+Extracted Metadata: {'/Creator': 'Google', '/Title': 'C3W1'}
+Extraction Validation Issues: None
+Extracted Text Length: 11583
+
+
+Step 2: Cleaning with NoiseRemoverCleaner
+Cleaned Text (first 500 chars):
+Copyright Notice These slides are distributed under the Creative Commons License. DeepLearning.AI makes these slides available for educational purposes. You may not use or distribute these slides for commercial purposes. You may make copies of these slides and use or distribute them for educational purposes as long as you cite DeepLearning.AI as the source of the slides. For the rest of the details of the license, see https://creativecommons.org/licenses/by-sa/2.0/legalcode Image Classification ...
+Cleaned Metadata: {'/Creator': 'Google', '/Title': 'C3W1'}
+Cleaning Validation Issues: None
+Cleaned Text Length: 11583
+
+
+Step 3: Chunking with SmartAdaptiveChunker
+Number of Chunks: 1
+Chunk 0 (Tokens: 1589):
+Copyright Notice These slides are distributed under the Creative Commons License. DeepLearning.AI makes these slides available for educational purposes. You may not use or distribute these slides for ...
+Chunking Validation Issues: ['Chunk 0 exceeds 300 tokens (1589) for pdf']
+
+
+FAIL: pdf
+Issues:
+  - Chunk 0 exceeds 300 tokens (1589) for pdf
+
+
+==================================================
+Processing docx file: tests\sample.docx
+==================================================
+Step 1: Extracting with UniversalExtractor
+Extracted Text (first 500 chars):
+BEHIND BARS AND BEYOND: A CONSTITUTIONAL ANALYSIS OF PRISONERS RIGHTS IN INDIA A DISSERTATION SUBMITTED TO AMITY LAW SCHOOL, AMITY UNIVERSITY MADHYA PRADESH (AUMP), GWALIOR IN PARTIAL FULFILMENT OF THE REQUIREMENTS FOR THE DEGREE OF LL.M (MASTER OF LAWS) AMITY LAW SCHOOL Amity University Madhya Pradesh Gwalior (M.P.) 2025 DECLARATION I, Kumari Poorti Sharma, a student of LL.M of Amity Law School, Amity University Madhya Pradesh, Gwalior with Enrollment No. A61001824001, do hereby declare that th...
+Extracted Metadata: {'num_paragraphs': 1332}
+Extraction Validation Issues: None
+Extracted Text Length: 299233
+
+
+Step 2: Cleaning with NoiseRemoverCleaner
+Cleaned Text (first 500 chars):
+BEHIND BARS AND BEYOND: A CONSTITUTIONAL ANALYSIS OF PRISONERS RIGHTS IN INDIA A DISSERTATION SUBMITTED TO AMITY LAW SCHOOL, AMITY UNIVERSITY MADHYA PRADESH (AUMP), GWALIOR IN PARTIAL FULFILMENT OF THE REQUIREMENTS FOR THE DEGREE OF LL.M (MASTER OF LAWS) AMITY LAW SCHOOL Amity University Madhya Pradesh Gwalior (M.P.) 2025 DECLARATION I, Kumari Poorti Sharma, a student of LL.M of Amity Law School, Amity University Madhya Pradesh, Gwalior with Enrollment No. A61001824001, do hereby declare that th...
+Cleaned Metadata: {'num_paragraphs': 1332}
+Cleaning Validation Issues: None
+Cleaned Text Length: 299233
+
+
+Step 3: Chunking with SmartAdaptiveChunker
+Number of Chunks: 1
+Chunk 0 (Tokens: 45265):
+BEHIND BARS AND BEYOND: A CONSTITUTIONAL ANALYSIS OF PRISONERS RIGHTS IN INDIA A DISSERTATION SUBMITTED TO AMITY LAW SCHOOL, AMITY UNIVERSITY MADHYA PRADESH (AUMP), GWALIOR IN PARTIAL FULFILMENT OF TH...
+Chunking Validation Issues: ['Chunk 0 exceeds 300 tokens (45265) for docx']
+
+
+FAIL: docx
+Issues:
+  - Chunk 0 exceeds 300 tokens (45265) for docx
+
+
+==================================================
+Processing html file: tests\sample.html
+==================================================
+Step 1: Extracting with UniversalExtractor
+Extracted Text (first 500 chars):
+NCERT Solutions for Class 10 Science Chapter 5 – Life Process - GeeksforGeeks Skip to content Courses DSA to Development GATE 2026 Prep Get 3 IBM Certifications For Working Professionals Interview 101: DSA & System Design Data Science Training Program JAVA Backend Development (Live) Data Analytics Training DevOps Engineering (LIVE) Data Structures & Algorithms in Python For Students Placement Preparation with DSA Data Science (Live) Data Structure & Algorithm-Self Paced (C++/JAVA) Master Competi...
+Extracted Metadata: {'title': 'NCERT Solutions for Class 10 Science Chapter 5 – Life Process - GeeksforGeeks'}
+Extraction Validation Issues: None
+Extracted Text Length: 28621
+
+
+Step 2: Cleaning with NoiseRemoverCleaner
+Cleaned Text (first 500 chars):
+NCERT Solutions for Class 10 Science Chapter 5 – Life Process - GeeksforGeeks Skip to content Courses DSA to Development GATE 2026 Prep Get 3 IBM Certifications For Working Professionals Interview 101: DSA & System Design Data Science Training Program JAVA Backend Development (Live) Data Analytics Training DevOps Engineering (LIVE) Data Structures & Algorithms in Python For Students Placement Preparation with DSA Data Science (Live) Data Structure & Algorithm-Self Paced (C++/JAVA) Master Competi...
+Cleaned Metadata: {'title': 'NCERT Solutions for Class 10 Science Chapter 5 – Life Process - GeeksforGeeks'}
+Cleaning Validation Issues: None
+Cleaned Text Length: 28621
+
+
+Step 3: Chunking with SmartAdaptiveChunker
+Number of Chunks: 1
+Chunk 0 (Tokens: 4461):
+NCERT Solutions for Class 10 Science Chapter 5 – Life Process - GeeksforGeeks Skip to content Courses DSA to Development GATE 2026 Prep Get 3 IBM Certifications For Working Professionals Interview 101...
+Chunking Validation Issues: ['Chunk 0 exceeds 300 tokens (4461) for html']
+
+
+FAIL: html
+Issues:
+  - Chunk 0 exceeds 300 tokens (4461) for html
+
+
+==================================================
+Processing txt file: tests\sample.txt
+==================================================
+Step 1: Extracting with UniversalExtractor
+Extracted Text (first 500 chars):
+<!DOCTYPE html> <!--[if IE 7]> <html class="ie ie7" lang="en-US"> <![endif]--> <!--[if IE 8]> <html class="ie ie8" lang="en-US"> <![endif]--> <!--[if !(IE 7) | !(IE 8) ]><!--> <html lang="en-US" > <!--<![endif]--> <head> <meta charset="UTF-8" /> <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=3.0"> <meta name='robots' content='index, follow, max-image-preview:large, max-snippet:-1' /><link rel="shortcut icon" href="https://media.geeksforgeek...
+Extracted Metadata: {'num_characters': 221815}
+Extraction Validation Issues: None
+Extracted Text Length: 182158
+
+
+Step 2: Cleaning with NoiseRemoverCleaner
+Cleaned Text (first 500 chars):
+<!DOCTYPE html> <!--[if IE 7]> <html class="ie ie7" lang="en-US"> <![endif]--> <!--[if IE 8]> <html class="ie ie8" lang="en-US"> <![endif]--> <!--[if !(IE 7) | !(IE 8) ]><!--> <html lang="en-US" > <!--<![endif]--> <head> <meta charset="UTF-8" /> <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.5, maximum-scale=3.0"> <meta name='robots' content='index, follow, max-image-preview:large, max-snippet:-1' /><link rel="shortcut icon" href="https://media.geeksforgeek...
+Cleaned Metadata: {'num_characters': 221815}
+Cleaning Validation Issues: None
+Cleaned Text Length: 182158
+
+
+Step 3: Chunking with SmartAdaptiveChunker
+Number of Chunks: 1
+Chunk 0 (Tokens: 12846):
+<!DOCTYPE html> <!--[if IE 7]> <html class="ie ie7" lang="en-US"> <![endif]--> <!--[if IE 8]> <html class="ie ie8" lang="en-US"> <![endif]--> <!--[if !(IE 7) | !(IE 8) ]><!--> <html lang="en-US" > <!-...
+Chunking Validation Issues: ['Chunk 0 exceeds 300 tokens (12846) for txt']
+
+
+FAIL: txt
+Issues:
+  - Chunk 0 exceeds 300 tokens (12846) for txt
+
+
+==================================================
+Summary
+==================================================
+pdf: FAIL
+  Issues:
+    - Chunk 0 exceeds 300 tokens (1589) for pdf
+docx: FAIL
+  Issues:
+    - Chunk 0 exceeds 300 tokens (45265) for docx
+html: FAIL
+  Issues:
+    - Chunk 0 exceeds 300 tokens (4461) for html
+txt: FAIL
+  Issues:
+    - Chunk 0 exceeds 300 tokens (12846) for txt
+
+Overall result: Some units failed
+>>>>>>> 104fdff3b197ca3c052eb6f1af2a1178e8f2814e
