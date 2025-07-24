@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 import weaviate
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -11,7 +11,7 @@ from preprocessor import _get_embedding
 import logging
 logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
 
-class BaseRetriever(BaseComponent):
+class BaseDBOperator(BaseComponent):
     """Base class for retrieving relevant context"""
 
     def __init__(self):
@@ -27,7 +27,7 @@ class BaseRetriever(BaseComponent):
         pass
 
 
-class VectorRetriever(BaseRetriever):
+class DBOperator(BaseDBOperator):
     def __init__(
         self,
         class_name: str,
@@ -41,16 +41,15 @@ class VectorRetriever(BaseRetriever):
         self.embedding_model = SentenceTransformer(embedding_model_name)
         self.class_name = class_name
 
-    def retrieve(self, query: str, keywords: List[str]) -> List[SearchResult]:
+    def retrieve(self, query: str) -> List[SearchResult]:
         semantic_results = self.semantic_search(query)
         # keyword_results = self.keyword_search(keywords)
         return self.rerank(semantic_results)
 
-    def add_documents(self, documents: List[Document]) -> None:
+    def add_documents(self, documents: List[Document], embeddings = List[Any]) -> None:
         collection = self.client.collections.get(self.class_name)
     
         texts = [doc.get('text', "") for doc in documents]
-        embeddings = _get_embedding(texts)
 
         objects_to_add = []
         vectors_to_add = []
@@ -68,7 +67,7 @@ class VectorRetriever(BaseRetriever):
         collection.data.insert_many(objects=objects_to_add, vectors=vectors_to_add)
 
     def semantic_search(self, query: str, top_k: int = 5) -> List[SearchResult]:
-        query_vector = self._get_embedding(query).tolist()
+        query_vector = _get_embedding(query).tolist()
 
         collection = self.client.collections.get(self.class_name)
         response = collection.query.near_vector(query_vector).with_limit(top_k).with_additional(["distance"]).fetch()
@@ -135,3 +134,5 @@ class VectorRetriever(BaseRetriever):
             merged[result.text] = result
 
         return sorted(merged.values(), key=lambda x: x.score, reverse=True)
+    
+    

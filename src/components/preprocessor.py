@@ -1,8 +1,8 @@
-from typing import List, Dict, Tuple, Any, Union
+from typing import List, Dict, Union, Any
 import re
 import torch
 import fitz
-import os
+import io
 from docx import Document as DocxDocument
 from bs4 import BeautifulSoup
 from ..models import Document
@@ -16,21 +16,22 @@ class UniversalExtractor():
     def __init__(self):
         pass
 
-    def _execute(self, file_path: str) -> List[str]:
-        ext = str(file_path).lower()
+    def execute(self, file_bytes: bytes, filename: str) -> List[str]:
+        ext = filename.lower()
         if ext.endswith(".pdf"):
-            return self._extract_from_pdf(file_path)
+            return self.extract_from_pdf(file_bytes)
         elif ext.endswith(".txt"):
-            return self._extract_from_txt(file_path)
+            return self.extract_from_txt(file_bytes)
         elif ext.endswith(".docx"):
-            return self._extract_from_docx(file_path)
+            return self.extract_from_docx(file_bytes)
         elif ext.endswith(".html") or ext.endswith(".htm"):
-            return self._extract_from_html(file_path)
+            return self.extract_from_html(file_bytes)
         else:
-            raise ValueError(f"Unsupported file type: {file_path}")
+            raise ValueError(f"Unsupported file type: {ext}")
 
-    def _extract_from_pdf(self, file_path: str) -> List[str]:
-        doc = fitz.open(file_path)
+    def extract_from_pdf(self, file_bytes: bytes) -> List[str]:
+        buffer = io.BytesIO(file_bytes)
+        doc = fitz.open(stream=buffer, filetype="pdf")
         extracted_blocks = []
 
         for page in doc:
@@ -46,30 +47,26 @@ class UniversalExtractor():
 
         return extracted_blocks
 
-    def _extract_from_txt(self, file_path: str) -> List[str]:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            block = f.read()
+    def extract_from_txt(self, file_bytes: bytes) -> List[str]:
+        content = file_bytes.decode('utf-8', errors='ignore')
+        return content.split("\n\n")
 
-        paragraphs = block.split("\n\n")
-        return [self._clean_block(p) for p in paragraphs if self._clean_block(p)]
-
-    def _extract_from_docx(self, file_path: str) -> List[str]:
-        doc = docx.Document(file_path)
+    def extract_from_docx(self, file_bytes: bytes) -> List[str]:
+        buffer = io.BytesIO(file_bytes)
+        doc = docx.Document(buffer)
         extracted_paragraphs = []
 
         for para in doc.paragraphs:
             block = para.block.strip()
             if block:
-                cleaned = self._clean_block(block)
+                cleaned = self.clean_block(block)
                 if cleaned:
                     extracted_paragraphs.append(cleaned)
 
         return extracted_paragraphs
 
-    def _extract_from_html(self, file_path: str) -> List[str]:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            raw_html = f.read()
-
+    def extract_from_html(self, file_bytes: bytes) -> List[str]:
+        raw_html = file_bytes.decode('utf-8', errors='ignore')
         # Replace <br> with newline so it can be split properly
         raw_html = raw_html.replace('<br>', '\n').replace('<br/>', '\n').replace('<br />', '\n')
 
@@ -82,13 +79,13 @@ class UniversalExtractor():
             # Now split into logical lines
             sub_blocks = re.split(r'\n+|•|- ', block)
             for sub in sub_blocks:
-                cleaned = self._clean_block(sub)
+                cleaned = self.clean_block(sub)
                 if cleaned:
                     extracted_elements.append(cleaned)
 
         return extracted_elements
 
-    def _clean_block(self, block: str) -> str:
+    def clean_block(self, block: str) -> str:
         block = re.sub(r'\s+', ' ', block)  # collapse excessive whitespace
         block = block.strip()
         return block if len(block) > 5 else ''
@@ -104,7 +101,7 @@ class NoiseRemover:
     - Preserve meaningful content, structure, and metadata
     """
 
-    def clean(self, blocks: List[str], min_words: int = 4) -> List[str]:
+    def execute(self, blocks: List[str], min_words: int = 4) -> List[str]:
         cleaned_blocks = []
         seen = set()
 
@@ -169,7 +166,7 @@ class SmartAdaptiveChunker():
     def __init__(
         self,
         model_name: str = "bert-base-uncased",
-        max_tokens: int = 128,
+        max_tokens: int = 64,
         min_tokens: int = 4,
         similarity_threshold: float = 0.80,
     ):
@@ -179,16 +176,16 @@ class SmartAdaptiveChunker():
         self.similarity_threshold = similarity_threshold
         self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
-    def process(self, blocks: List[str]) -> List[Dict[str, Any]]:
-        logical_blocks = self._delimiter_split(blocks)
-        refined_chunks = self._semantic_refine(logical_blocks)
+    def execute(self, blocks: List[str]) -> List[Dict[str, Any]]:
+        logical_blocks = self.delimiter_split(blocks, max_bullet_length = 64)
+        refined_chunks = self.semantic_refine(logical_blocks)
         return refined_chunks
     
 
-    def _delimiter_split(self, blocks: List[str], max_bullet_length: int = 128) -> List[str]:
+    def delimiter_split(self, blocks: List[str], max_bullet_length: int = 128) -> List[str]:
         chunks = []
         for block in blocks:
-            temp_lines, chunks = self._merge_bullets(block, chunks, max_bullet_length)
+            temp_lines, chunks = self.merge_bullets(block, chunks, max_bullet_length)
             # Now break temp_lines further using punctuation rules
             combined = " ".join(temp_lines)
 
@@ -226,7 +223,7 @@ class SmartAdaptiveChunker():
 
         return chunks
     
-    def _merge_bullets(self, block: str, _chunks: List[Any], max_bullet_length: int) -> List[str]:
+    def merge_bullets(self, block: str, _chunks: List[Any], max_bullet_length: int) -> List[str]:
         chunks = _chunks
         temp_lines = []
         # Normalize line breaks and strip
@@ -268,21 +265,15 @@ class SmartAdaptiveChunker():
         return temp_lines, chunks
 
 
-    def _make_chunk(self, text: str) -> Document:
+    def make_chunk(self, text: str) -> Document:
         return Document(
             text= text.strip(),
             metadata= {"chunk_id": str(uuid.uuid4()),
                         "token_count": len(self.tokenizer.tokenize(text))}
         )
-        
-    def _get_embedding(self, texts: Union[str, List[str]]) -> Union[torch.Tensor, List[torch.Tensor]]:
-        if isinstance(texts, str):
-            texts = [texts]
 
-        return self.embedder.encode(texts, normalize_embeddings=True, convert_to_tensor=True)
-
-    def _semantic_refine(self, chunks: List[str]) -> List[Document]:
-        embeddings = self._get_embedding(chunks)
+    def semantic_refine(self, chunks: List[str]) -> List[Document]:
+        embeddings = self.get_embedding(chunks)
 
         refined_chunks = []
         i = 0
@@ -291,16 +282,21 @@ class SmartAdaptiveChunker():
             sim = util.cos_sim(embeddings[i], embeddings[i + 1]).item()
             if sim > self.similarity_threshold:
                 merged_text = chunks[i] + " " + chunks[i + 1]
-                merged_chunk = self._make_chunk(merged_text)
+                merged_chunk = self.make_chunk(merged_text)
                 refined_chunks.append(merged_chunk)
                 i += 2  # Skip next one because it's merged
             else:
-                refined_chunks.append(self._make_chunk(chunks[i]))
+                refined_chunks.append(self.make_chunk(chunks[i]))
                 i += 1
         # Add last chunk if not processed
         if i == len(chunks) - 1:
-            refined_chunks.append(self._make_chunk(chunks[i]))
+            refined_chunks.append(self.make_chunk(chunks[i]))
 
         return refined_chunks
     
-        
+
+def get_embedding(self, texts: Union[str, List[str]]) -> Union[torch.Tensor, List[torch.Tensor]]:
+    if isinstance(texts, str):
+        texts = [texts]
+
+    return self.embedder.encode(texts, normalize_embeddings=True, convert_to_tensor=True)

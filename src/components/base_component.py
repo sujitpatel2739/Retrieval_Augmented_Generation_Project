@@ -20,6 +20,7 @@ class BaseComponent(ABC):
         start_time = datetime.now()
         step_id = str(uuid.uuid4())
         
+        result = None, log = None
         try:
             result = self._execute(*args, **kwargs)
             duration = (datetime.now() - start_time).total_seconds() * 1000
@@ -34,9 +35,9 @@ class BaseComponent(ABC):
                 duration_ms=duration,
                 success=True
             )
-            return result, log
             
         except Exception as e:
+            result = {"status": "EXCEPTION", "status_code": 400, "detail": str(e)}
             duration = (datetime.now() - start_time).total_seconds() * 1000
             log = StepLog(
                 step_id=step_id,
@@ -49,4 +50,5 @@ class BaseComponent(ABC):
                 success=False,
                 error=str(e)
             )
-            raise e
+        
+        return result, log

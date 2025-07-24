@@ -18,10 +18,9 @@ class BaseWorkflow(ABC):
         """Execute with logging"""
         workflow_id = str(uuid.uuid4())
         start_time = datetime.now()
-        
+        result = None, workflow_log = None
         try:
             result, step_logs = self._execute(*args, **kwargs)
-            
             
             workflow_log = WorkflowLog(
                 workflow_id=workflow_id,
@@ -35,6 +34,7 @@ class BaseWorkflow(ABC):
             return result, workflow_log
             
         except Exception as e:
+            result = {"status": "EXCEPTION", "status_code": 400, "detail": str(e)}
             workflow_log = WorkflowLog(
                 workflow_id=workflow_id,
                 query=args[0] if args else "",
@@ -44,4 +44,5 @@ class BaseWorkflow(ABC):
                 success=False,
                 final_response=None
             )
-            raise e 
+        
+        return result, workflow_log

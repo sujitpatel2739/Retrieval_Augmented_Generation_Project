@@ -1,22 +1,22 @@
 from .base_component import BaseComponent
 from .router import BaseRequestRouter, LLMRequestRouter
 from .reformulator import BaseQueryReformulator, LLMQueryReformulator
-<<<<<<< HEAD
-from .db_operator import BaseRetriever, VectorRetriever
-=======
-from .retriever import BaseRetriever, VectorRetriever
->>>>>>> 104fdff3b197ca3c052eb6f1af2a1178e8f2814e
+from .db_operator import BaseDBOperator, DBOperator
 from .completion_checker import BaseCompletionChecker, LLMCompletionChecker
 from .answer_generator import BaseAnswerGenerator, LLMAnswerGenerator
+from .preprocessor import UniversalExtractor, NoiseRemover, SmartAdaptiveChunker
 
 __all__ = [
     'BaseComponent',
+    'UniversalExtractor',
+    'NoiseRemover',
+    'SmartAdaptiveChunker',
     'BaseRequestRouter',
     'LLMRequestRouter',
     'BaseQueryReformulator',
     'LLMQueryReformulator',
-    'BaseRetriever',
-    'VectorRetriever',
+    'BaseDBOperator',
+    'DBOperator',
     'BaseCompletionChecker',
     'LLMCompletionChecker',
     'BaseAnswerGenerator',

@@ -1,19 +1,12 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import uvicorn
 from datetime import datetime
 from .config import Settings
 from .logger.json_logger import JsonLogger
-from .components import (
-    LLMRequestRouter,
-    LLMQueryReformulator,
-    VectorRetriever,
-    LLMCompletionChecker,
-    LLMAnswerGenerator
-)
 from .workflow import RAGWorkflow
-from .models import RAGResponse, Document
+
 import os
 from dotenv import load_dotenv
 
@@ -26,64 +19,38 @@ logger = JsonLogger()
 
 # Load environment variables from .env
 load_dotenv()
-# Read required values from env
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Load settings
 settings = Settings()
 
-# Initialize retriever
-retriever = VectorRetriever(
-    class_name=settings.weaviate_class_name,
-    url=settings.weaviate_url
-)
-
-# Initialize components
-router = LLMRequestRouter(model=settings.router_model, api_key=OPENAI_API_KEY)
-reformulator = LLMQueryReformulator(model=settings.reformulator_model, api_key=OPENAI_API_KEY)
-completion_checker = LLMCompletionChecker(model=settings.completion_model, api_key=OPENAI_API_KEY)
-answer_generator = LLMAnswerGenerator(model=settings.answer_model, api_key=OPENAI_API_KEY)
-
 # Initialize workflow
 workflow = RAGWorkflow(
-    router=router,
-    reformulator=reformulator,
-    retriever=retriever,
-    completion_checker=completion_checker,
-    answer_generator=answer_generator,
-    completion_threshold=settings.completion_threshold
+    completion_threshold=settings.completion_threshold,
+    vector_db_class=settings.weaviate_primary_class,
+    OPENAI_API_KEY=OPENAI_API_KEY
 )
 
 class QueryRequest(BaseModel):
     query: str
-
-class DocumentRequest(BaseModel):
-    documents: List[Document]
 
 @app.post("/query")
 async def process_query(request: QueryRequest):
     """Process a query through the RAG workflow"""
     response, workflow_log = workflow.execute(request.query)
     logger.log_workflow(workflow_log)
-    if not response:
-        raise HTTPException(status_code=400, detail="Could not process query")
     return response
 
-@app.post("/documents")
-async def add_documents(request: DocumentRequest) -> dict:
-    """Add documents to the retriever"""
-    try:
-        documents = [Document(text=doc.text, metadata=doc.metadata) for doc in request.documents]
-        retriever.add_documents(documents)
-        return {"status": "success", "message": f"Added {len(documents)} documents"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))\
-            
-            
-@app.get("/health")
-def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy"}
+@app.post('/document')
+async def process_file(file: UploadFile = File(...)) -> Dict:
+    filename = file.filename
+    extension = os.path.splitext(filename)[1].lower()
+    
+    if extension not in [".pdf", ".docx", ".txt", ".html", ".htm"]:
+        return {"status": "ERROR", "status_code": 400, "detail": f"Unsupported file type: {filename}"}
+    
+    response = workflow._process_document(file)
+    return response
 
 @app.get("/logs/workflows")
 async def get_workflow_logs(
