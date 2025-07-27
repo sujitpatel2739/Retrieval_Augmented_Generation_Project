@@ -1,12 +1,13 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any, Union
 import weaviate
+import weaviate.classes as wvc
+from weaviate.classes.config import Property, DataType
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from ..models import SearchResult, Document
 from ..config import Settings
 from .base_component import BaseComponent
-from preprocessor import _get_embedding
 
 import logging
 logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
@@ -17,71 +18,88 @@ class BaseDBOperator(BaseComponent):
     def __init__(self):
         super().__init__(name="retriever")
 
-    def _execute(self, query: str, keywords: List[str]) -> List[SearchResult]:
+    def _execute(self, query: str, top_k: int = 10) -> List[SearchResult]:
         """Execute retrieval"""
-        return self.retrieve(query, keywords)
+        return self.retrieve(query, top_k = top_k)
 
     @abstractmethod
-    def retrieve(self, query: str, keywords: List[str]) -> List[SearchResult]:
-        """Retrieve relevant context based on query and keywords."""
+    def retrieve(self, query: str, top_k: int = 10) -> List[SearchResult]:
+        """Retrieve relevant context based on query"""
         pass
 
 
 class DBOperator(BaseDBOperator):
     def __init__(
         self,
-        class_name: str,
+        collection_name: str,
         embedding_model_name: str = "all-MiniLM-L6-v2",
-        url: Optional[str] = None
     ):
         super().__init__()
 
         settings = Settings()
         self.client = weaviate.connect_to_local(port=settings.weaviate_port, skip_init_checks=True)
-        self.embedding_model = SentenceTransformer(embedding_model_name)
-        self.class_name = class_name
+        self.embedder = SentenceTransformer(embedding_model_name)
+        self.collection = None
+        
+        print("Weaviate connected: ", self.client.is_ready())
+        if self.client.collections.exists(collection_name):
+            self.collection = self.client.collections.get(collection_name)
+        else:
+            self.collection = self.client.collections.create(
+                name=collection_name,
+                properties=[
+                    Property(name="text", data_type=DataType.TEXT),
+                    Property(name="metadata", data_type=DataType.OBJECT,
+                    nested_properties=[
+                        Property(name="chunk_id", data_type=DataType.TEXT),
+                        Property(name="token_len", data_type=DataType.INT),
+                ]),
+                ],
+            )
+        
+    def close(self):
+        self.client.close()
 
-    def retrieve(self, query: str) -> List[SearchResult]:
-        semantic_results = self.semantic_search(query)
-        # keyword_results = self.keyword_search(keywords)
-        return self.rerank(semantic_results)
+    def retrieve(self, query: str, top_k: int = 10) -> List[SearchResult]:
+        semantic_results = self.semantic_search(query, top_k=top_k)
+        # return self.rerank(semantic_results)
+        return semantic_results
 
-    def add_documents(self, documents: List[Document], embeddings = List[Any]) -> None:
-        collection = self.client.collections.get(self.class_name)
-    
-        texts = [doc.get('text', "") for doc in documents]
+    def add_documents(self, documents: List[Document], embeddings: List[Any]) -> None:
+        objects = list()
+        
+        for doc, embedding in zip(documents, embeddings):
+            objects.append(wvc.data.DataObject(
+            properties = {"text": doc.text,
+                          'metadata': doc.metadata},
+            vector = embedding.detach().cpu().numpy().tolist()
+            ))
+        
+        self.collection.data.insert_many(objects)
+        
 
-        objects_to_add = []
-        vectors_to_add = []
+    from weaviate.classes.query import MetadataQuery
 
-        for doc, embedding in zip(texts, embeddings):
-            embedding_list = embedding.detach().cpu().numpy().tolist()
-            properties = {"text": doc.text}
-            if doc.metadata:
-                properties.update(doc.metadata)
+    def semantic_search(self, query: str, top_k: int = 15) -> List[SearchResult]:
+        query_vector = self.embedder.encode(query, normalize_embeddings=True, convert_to_tensor=True)
+        query_vector = query_vector.detach().cpu().numpy().tolist()
 
-            objects_to_add.append(properties)
-            vectors_to_add.append(embedding_list)
-    
-        # Batch import using v4 API
-        collection.data.insert_many(objects=objects_to_add, vectors=vectors_to_add)
-
-    def semantic_search(self, query: str, top_k: int = 5) -> List[SearchResult]:
-        query_vector = _get_embedding(query).tolist()
-
-        collection = self.client.collections.get(self.class_name)
-        response = collection.query.near_vector(query_vector).with_limit(top_k).with_additional(["distance"]).fetch()
+        response = self.collection.query.near_vector(
+            near_vector=query_vector,
+            limit=top_k,
+            return_metadata = wvc.query.MetadataQuery(distance=True)
+        )
 
         results = response.objects
-
         return [
             SearchResult(
-                text=obj.properties.get("text", ""),
-                metadata=obj.properties,
-                score=1.0 - obj.additional.get("distance", 1.0)  # Convert distance to similarity
+                text=obj.properties['text'],
+                metadata=obj.properties.get('metadata'),
+                score=1.0 - obj.metadata.distance if obj.metadata and obj.metadata.distance is not None else None
             )
             for obj in results
         ]
+        
 
     def keyword_search(self, keywords: List[str], top_k: int = 5) -> List[SearchResult]:
         if not keywords:
@@ -99,7 +117,7 @@ class DBOperator(BaseDBOperator):
             ]
         }
     
-        collection = self.client.collections.get(self.class_name)
+        collection = self.client.collections.get(self.collection_name)
         response = (
             collection.query
             .where(where_filter)

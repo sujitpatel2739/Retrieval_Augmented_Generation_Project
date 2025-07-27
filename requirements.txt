@@ -8,3 +8,4 @@ weaviate-client>=4.0.0
 numpy
 python-dotenv
 requests
+python-multipart

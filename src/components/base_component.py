@@ -20,7 +20,8 @@ class BaseComponent(ABC):
         start_time = datetime.now()
         step_id = str(uuid.uuid4())
         
-        result = None, log = None
+        result = None
+        log = None
         try:
             result = self._execute(*args, **kwargs)
             duration = (datetime.now() - start_time).total_seconds() * 1000

@@ -1,14 +1,37 @@
-<!-- src/static/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>RAG System Interface</title>
-  <link rel="stylesheet" href="/static/styles.css" />
+  <meta charset="UTF-8">
+  <title>RAG Assistant</title>
+  <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-  <div id="root"></div>
-  <script type="module" src="/static/app.js"></script>
+  <div class="container">
+    <h1>📄 RAG Assistant</h1>
+
+    <section class="card">
+      <h2>Ask a Question</h2>
+      <input type="text" id="query" placeholder="Enter your query here..." />
+      <label>Top K Results:
+        <input type="number" id="top_k" value="5" min="1" max="20" />
+      </label>
+      <button onclick="submitQuery()">Submit Query</button>
+      <div id="queryResult" class="result"></div>
+    </section>
+
+    <section class="card">
+      <h2>Upload Document</h2>
+      <input type="file" id="docFile" />
+      <label>Min Token Length:
+        <input type="number" id="min_token_len" value="20" />
+      </label>
+      <label>Max Token Length:
+        <input type="number" id="max_token_len" value="250" />
+      </label>
+      <button onclick="uploadDocument()">Upload</button>
+      <div id="uploadResult" class="result"></div>
+    </section>
+  </div>
+  <script src="/static/script.js"></script>
 </body>
 </html>

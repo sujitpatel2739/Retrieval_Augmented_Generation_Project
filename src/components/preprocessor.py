@@ -1,4 +1,4 @@
-from typing import List, Dict, Union, Any
+from typing import List, Dict, Tuple, Union, Any
 import re
 import torch
 import fitz
@@ -16,32 +16,32 @@ class UniversalExtractor():
     def __init__(self):
         pass
 
-    def execute(self, file_bytes: bytes, filename: str) -> List[str]:
-        ext = filename.lower()
-        if ext.endswith(".pdf"):
+    def execute(self, file_bytes: bytes, extension: str) -> List[str]:
+        if extension.endswith(".pdf"):
             return self.extract_from_pdf(file_bytes)
-        elif ext.endswith(".txt"):
+        elif extension.endswith(".txt"):
             return self.extract_from_txt(file_bytes)
-        elif ext.endswith(".docx"):
+        elif extension.endswith(".docx"):
             return self.extract_from_docx(file_bytes)
-        elif ext.endswith(".html") or ext.endswith(".htm"):
+        elif extension.endswith(".html") or extension.endswith(".htm"):
             return self.extract_from_html(file_bytes)
         else:
-            raise ValueError(f"Unsupported file type: {ext}")
+            raise ValueError(f"Unsupported file type: {extension}")
 
     def extract_from_pdf(self, file_bytes: bytes) -> List[str]:
         buffer = io.BytesIO(file_bytes)
         doc = fitz.open(stream=buffer, filetype="pdf")
-        extracted_blocks = []
+        print(doc)
+        extracted_blocks = []   
 
         for page in doc:
-            blocks = page.get_block("blocks")  # returns: (x0, y0, x1, y1, "block", block_no, block_type)
+            blocks = page.get_text("blocks")  # returns list of tuples: (x0, y0, x1, y1, "text", block_no)
             sorted_blocks = sorted(blocks, key=lambda b: (b[1], b[0]))  # top-to-bottom, left-to-right
 
             for block in sorted_blocks:
-                block = block[4].strip()
-                if block:
-                    cleaned = self._clean_block(block)
+                block_text = block[4].strip()
+                if block_text:
+                    cleaned = self.clean_block(block_text)
                     if cleaned:
                         extracted_blocks.append(cleaned)
 
@@ -57,7 +57,7 @@ class UniversalExtractor():
         extracted_paragraphs = []
 
         for para in doc.paragraphs:
-            block = para.block.strip()
+            block = para.text.strip()
             if block:
                 cleaned = self.clean_block(block)
                 if cleaned:
@@ -67,7 +67,6 @@ class UniversalExtractor():
 
     def extract_from_html(self, file_bytes: bytes) -> List[str]:
         raw_html = file_bytes.decode('utf-8', errors='ignore')
-        # Replace <br> with newline so it can be split properly
         raw_html = raw_html.replace('<br>', '\n').replace('<br/>', '\n').replace('<br />', '\n')
 
         soup = BeautifulSoup(raw_html, 'html.parser')
@@ -75,7 +74,7 @@ class UniversalExtractor():
 
         extracted_elements = []
         for tag in content_tags:
-            block = tag.get_block(separator='\n', strip=True)
+            block = tag.get_text(separator='\n', strip=True)
             # Now split into logical lines
             sub_blocks = re.split(r'\n+|•|- ', block)
             for sub in sub_blocks:
@@ -134,7 +133,7 @@ class NoiseRemover:
             block = re.sub(r'[^\w\s:/\-,]', '', block)  # keeps : / - , for dates and logs
             block = re.sub(r'[^\w\s.,!?()\-+]', '', block) # other noisy symbols
 
-            # Remove extra spaces
+            # Remove extensionra spaces
             block = re.sub(r'\s+', ' ', block).strip()
 
             # Remove if only digits or random characters
@@ -166,13 +165,9 @@ class SmartAdaptiveChunker():
     def __init__(
         self,
         model_name: str = "bert-base-uncased",
-        max_tokens: int = 64,
-        min_tokens: int = 4,
-        similarity_threshold: float = 0.80,
+        similarity_threshold: float = 0.80
     ):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.max_tokens = max_tokens
-        self.min_tokens = min_tokens
         self.similarity_threshold = similarity_threshold
         self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
@@ -182,10 +177,13 @@ class SmartAdaptiveChunker():
         return refined_chunks
     
 
-    def delimiter_split(self, blocks: List[str], max_bullet_length: int = 128) -> List[str]:
+    def delimiter_split(self,
+                    blocks: List[str], max_bullet_length: int = 128,
+                    max_token_len: int = 256, min_token_len: int = 4) -> List[str]:
+        
         chunks = []
         for block in blocks:
-            temp_lines, chunks = self.merge_bullets(block, chunks, max_bullet_length)
+            temp_lines, chunks = self.merge_bullets(block, chunks, max_token_len)
             # Now break temp_lines further using punctuation rules
             combined = " ".join(temp_lines)
 
@@ -199,7 +197,7 @@ class SmartAdaptiveChunker():
                 sentence_tokens = len(sentence.split())
 
                 # If this single sentence is longer than max_tokens, flush what we have and split it directly
-                if sentence_tokens > self.max_tokens:
+                if sentence_tokens > max_token_len:
                     if current_chunk:
                         chunks.append(' '.join(current_chunk))
                         current_chunk = []
@@ -208,7 +206,7 @@ class SmartAdaptiveChunker():
                     continue
                 
                 # If adding this sentence keeps us within the limit, add it
-                if current_tokens + sentence_tokens <= self.max_tokens:
+                if current_tokens + sentence_tokens <= max_token_len:
                     current_chunk.append(sentence.strip())
                     current_tokens += sentence_tokens
                 else:
@@ -223,7 +221,7 @@ class SmartAdaptiveChunker():
 
         return chunks
     
-    def merge_bullets(self, block: str, _chunks: List[Any], max_bullet_length: int) -> List[str]:
+    def merge_bullets(self, block: str, _chunks: List[Any], max_token_len: int) -> List[str]:
         chunks = _chunks
         temp_lines = []
         # Normalize line breaks and strip
@@ -246,7 +244,7 @@ class SmartAdaptiveChunker():
                     # Match bullets: -, *, •, numbered 1. 2. etc.
                     if re.match(r"^[-*•]\s+|^\d+\.\s+", bullet):
                         # If bullet is too long, treat it as standalone
-                        if len(bullet) > max_bullet_length:
+                        if len(bullet) > max_token_len:
                             if collected:
                                 chunks.append(" ".join(collected))
                                 collected = []
@@ -269,11 +267,11 @@ class SmartAdaptiveChunker():
         return Document(
             text= text.strip(),
             metadata= {"chunk_id": str(uuid.uuid4()),
-                        "token_count": len(self.tokenizer.tokenize(text))}
+                        "token_len": len(self.tokenizer.tokenize(text))}
         )
 
-    def semantic_refine(self, chunks: List[str]) -> List[Document]:
-        embeddings = self.get_embedding(chunks)
+    def semantic_refine(self, chunks: List[str]) -> Tuple[List[Document], Union[torch.Tensor, List[torch.Tensor]]]:
+        embeddings = self.embedder.encode(chunks, normalize_embeddings=True, convert_to_tensor=True)
 
         refined_chunks = []
         i = 0
@@ -284,7 +282,7 @@ class SmartAdaptiveChunker():
                 merged_text = chunks[i] + " " + chunks[i + 1]
                 merged_chunk = self.make_chunk(merged_text)
                 refined_chunks.append(merged_chunk)
-                i += 2  # Skip next one because it's merged
+                i += 2  # Skip nextension one because it's merged
             else:
                 refined_chunks.append(self.make_chunk(chunks[i]))
                 i += 1
@@ -292,11 +290,5 @@ class SmartAdaptiveChunker():
         if i == len(chunks) - 1:
             refined_chunks.append(self.make_chunk(chunks[i]))
 
-        return refined_chunks
+        return (refined_chunks, embeddings)
     
-
-def get_embedding(self, texts: Union[str, List[str]]) -> Union[torch.Tensor, List[torch.Tensor]]:
-    if isinstance(texts, str):
-        texts = [texts]
-
-    return self.embedder.encode(texts, normalize_embeddings=True, convert_to_tensor=True)

@@ -1,13 +1,14 @@
 from pydantic_settings import BaseSettings
+from pydantic import Field
 
 class Settings(BaseSettings):
     # OpenRouter API settings
-    openai_api_key: str
+    openai_api_key: str = Field(..., env = "OPENAI_API_KEY")
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     
     # Weviate
     weaviate_url: str = "http://localhost:8080"
-    weaviate_port: str = "8080",
+    weaviate_port: int = 8080
     weaviate_primary_class: str = "Document"
     
     # LLM Settings
@@ -22,3 +23,4 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
+        validate_assignment = True

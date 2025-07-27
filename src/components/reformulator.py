@@ -32,7 +32,7 @@ class LLMQueryReformulator(BaseQueryReformulator):
         self.model = model
     
     def reformulate(self, query: str) -> ReformulatedQuery:
-        prompt = f"""Given the user query, reformulate it to be more precise and extract key search terms.
+        prompt = f"""Given the user query, reformulate it to correct any typos and extract key search terms.
             Return your response in this JSON format:
             {{
                 "refined_query": <reformulated question>,

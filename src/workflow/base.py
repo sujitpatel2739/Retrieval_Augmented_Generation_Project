@@ -18,7 +18,8 @@ class BaseWorkflow(ABC):
         """Execute with logging"""
         workflow_id = str(uuid.uuid4())
         start_time = datetime.now()
-        result = None, workflow_log = None
+        result = None
+        workflow_log = None
         try:
             result, step_logs = self._execute(*args, **kwargs)
             
