@@ -17,6 +17,7 @@ class UniversalExtractor():
         pass
 
     def execute(self, file_bytes: bytes, extension: str) -> List[str]:
+        print('Extractor called')
         if extension.endswith(".pdf"):
             return self.extract_from_pdf(file_bytes)
         elif extension.endswith(".txt"):
@@ -101,6 +102,7 @@ class NoiseRemover:
     """
 
     def execute(self, blocks: List[str], min_words: int = 4) -> List[str]:
+        print('NoiseRemover called')
         cleaned_blocks = []
         seen = set()
 
@@ -171,96 +173,78 @@ class SmartAdaptiveChunker():
         self.similarity_threshold = similarity_threshold
         self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
-    def execute(self, blocks: List[str]) -> List[Dict[str, Any]]:
-        logical_blocks = self.delimiter_split(blocks, max_bullet_length = 64)
-        refined_chunks = self.semantic_refine(logical_blocks)
+    def execute(self, blocks: List[str], max_token_len, min_token_len) -> List[Dict[str, Any]]:
+        logical_blocks = self.delimiter_split(blocks, max_token_len, min_token_len)
+        refined_chunks = self.semantic_refine(logical_blocks, max_token_len)
         return refined_chunks
     
 
-    def delimiter_split(self,
-                    blocks: List[str], max_bullet_length: int = 128,
-                    max_token_len: int = 256, min_token_len: int = 4) -> List[str]:
-        
+    def delimiter_split(self, blocks: List[str], max_token_len: int = 256, min_token_len: int = 4) -> List[str]:
+        print('delimiter_split called')
         chunks = []
+        buffer = []
+        buffer_tokens = 0
+
         for block in blocks:
-            temp_lines, chunks = self.merge_bullets(block, chunks, max_token_len)
-            # Now break temp_lines further using punctuation rules
-            combined = " ".join(temp_lines)
+            block = block.strip()
+            if not block:
+                continue
 
-            # Smart sentence splitter (handles ., !, ? but not decimals/abbreviations)
-            sentences = re.split(r'(?<=[.!?])\s+', combined.strip())
+            block_tokens = len(block.split())
 
-            current_chunk = []
-            current_tokens = 0
+            # If adding this block won't exceed max_token_len, add it to buffer
+            if buffer_tokens + block_tokens <= max_token_len:
+                buffer.append(block)
+                buffer_tokens += block_tokens
+            else:
+                # Process the buffer first
+                if buffer:
+                    combined = " ".join(buffer)
+                    chunks.extend(self._split_combined_block(combined, max_token_len))
+                # Start new buffer
+                buffer = [block]
+                buffer_tokens = block_tokens
 
-            for sentence in sentences:
-                sentence_tokens = len(sentence.split())
-
-                # If this single sentence is longer than max_tokens, flush what we have and split it directly
-                if sentence_tokens > max_token_len:
-                    if current_chunk:
-                        chunks.append(' '.join(current_chunk))
-                        current_chunk = []
-                        current_tokens = 0
-                    chunks.append(sentence.strip())  # Add long sentence as-is
-                    continue
-                
-                # If adding this sentence keeps us within the limit, add it
-                if current_tokens + sentence_tokens <= max_token_len:
-                    current_chunk.append(sentence.strip())
-                    current_tokens += sentence_tokens
-                else:
-                    # Else flush current and start a new chunk
-                    chunks.append(' '.join(current_chunk))
-                    current_chunk = [sentence.strip()]
-                    current_tokens = sentence_tokens
-
-            # Add any remaining sentences
-            if current_chunk:
-                chunks.append(' '.join(current_chunk))
+        # Process any remaining buffer
+        if buffer:
+            combined = " ".join(buffer)
+            chunks.extend(self._split_combined_block(combined, max_token_len))
 
         return chunks
-    
-    def merge_bullets(self, block: str, _chunks: List[Any], max_token_len: int) -> List[str]:
-        chunks = _chunks
-        temp_lines = []
-        # Normalize line breaks and strip
-        lines = block.strip().splitlines()
-        
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
-            # Skip empty lines
-            if not line:
-                i += 1
+
+    def _split_combined_block(self, combined: str, max_token_len: int) -> List[str]:
+        # Smart sentence splitter (ignores decimals/abbreviations)
+        sentences = re.split(r'(?<=[.!?])\s+', combined.strip())
+
+        local_chunks = []
+        current_chunk = []
+        current_tokens = 0
+
+        for sentence in sentences:
+            sentence_tokens = len(sentence.split())
+
+            if sentence_tokens > max_token_len:
+                # Flush current chunk if it exists
+                if current_chunk:
+                    local_chunks.append(' '.join(current_chunk))
+                    current_chunk = []
+                    current_tokens = 0
+                # Add long sentence as its own chunk
+                local_chunks.append(sentence.strip())
                 continue
-            
-            # If this is a heading ending in ':' or ',', start collecting bullets
-            if line.endswith(":") or line.endswith(","):
-                collected = [line]
-                i += 1
-                while i < len(lines):
-                    bullet = lines[i].strip()
-                    # Match bullets: -, *, •, numbered 1. 2. etc.
-                    if re.match(r"^[-*•]\s+|^\d+\.\s+", bullet):
-                        # If bullet is too long, treat it as standalone
-                        if len(bullet) > max_token_len:
-                            if collected:
-                                chunks.append(" ".join(collected))
-                                collected = []
-                            chunks.append(bullet)
-                        else:
-                            collected.append(bullet)
-                        i += 1
-                    else:
-                        break
-                if collected:
-                    chunks.append(" ".join(collected))
+
+            if current_tokens + sentence_tokens <= max_token_len:
+                current_chunk.append(sentence.strip())
+                current_tokens += sentence_tokens
             else:
-                temp_lines.append(line)
-                i += 1
-                    
-        return temp_lines, chunks
+                local_chunks.append(' '.join(current_chunk))
+                current_chunk = [sentence.strip()]
+                current_tokens = sentence_tokens
+
+        if current_chunk:
+            local_chunks.append(' '.join(current_chunk))
+
+        return local_chunks
 
 
     def make_chunk(self, text: str) -> Document:
@@ -270,25 +254,40 @@ class SmartAdaptiveChunker():
                         "token_len": len(self.tokenizer.tokenize(text))}
         )
 
-    def semantic_refine(self, chunks: List[str]) -> Tuple[List[Document], Union[torch.Tensor, List[torch.Tensor]]]:
-        embeddings = self.embedder.encode(chunks, normalize_embeddings=True, convert_to_tensor=True)
+    def semantic_refine(self, chunks: List[str], max_token_len) -> Tuple[List[Document], Union[torch.Tensor, List[torch.Tensor]]]:
+        print("semantic_refine called")
 
+        if not chunks:
+            return [], []
+
+        # Encode chunks to get embeddings
+        embeddings = self.embedder.encode(chunks, normalize_embeddings=True, convert_to_tensor=True)
         refined_chunks = []
         i = 0
-        while i < len(chunks) - 1:
-            # Compute cosine similarity for adjacent pairs using tensor operations
-            sim = util.cos_sim(embeddings[i], embeddings[i + 1]).item()
-            if sim > self.similarity_threshold:
-                merged_text = chunks[i] + " " + chunks[i + 1]
-                merged_chunk = self.make_chunk(merged_text)
-                refined_chunks.append(merged_chunk)
-                i += 2  # Skip nextension one because it's merged
-            else:
-                refined_chunks.append(self.make_chunk(chunks[i]))
-                i += 1
-        # Add last chunk if not processed
-        if i == len(chunks) - 1:
-            refined_chunks.append(self.make_chunk(chunks[i]))
+        total_chunks = len(chunks)
 
-        return (refined_chunks, embeddings)
+        while i < total_chunks:
+            current_chunk = chunks[i]
+            current_embed = embeddings[i]
+
+            # Try to merge with next chunks if semantically similar
+            merged = False
+            j = i + 1
+            while j < total_chunks:
+                sim = util.cos_sim(current_embed, embeddings[j]).item()
+                if sim > self.similarity_threshold and len(current_chunk.split() + chunks[j].split()) <= max_token_len:
+                    # Merge chunks
+                    current_chunk += " " + chunks[j]
+                    # Recompute embedding for the merged chunk
+                    current_embed = self.embedder.encode(current_chunk, normalize_embeddings=True, convert_to_tensor=True)
+                    j += 1
+                    merged = True
+                else:
+                    break
+
+            # Add the final merged chunk
+            refined_chunks.append(self.make_chunk(current_chunk))
+            i = j if merged else i + 1
+
+        return refined_chunks, embeddings
     

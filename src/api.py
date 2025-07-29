@@ -20,11 +20,6 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 settings = Settings()
 logger = JsonLogger()
 
-class DocumentRequest(BaseModel):
-    file: UploadFile = File(...)
-    max_token_len: int
-    min_token_len: int
-
 class QueryRequest(BaseModel):
     query: str
     top_k: int
@@ -41,7 +36,7 @@ async def lifespan(app: FastAPI):
         OPENAI_API_KEY=OPENAI_API_KEY
     )
     yield
-    workflow.db_operator.close()
+    workflow.db_operator.close_connection()
     print("Workflow Lifespan Ended! All connections closed")
 
 app = FastAPI(lifespan=lifespan)

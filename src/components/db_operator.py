@@ -43,21 +43,24 @@ class DBOperator(BaseDBOperator):
         
         print("Weaviate connected: ", self.client.is_ready())
         if self.client.collections.exists(collection_name):
-            self.collection = self.client.collections.get(collection_name)
-        else:
-            self.collection = self.client.collections.create(
-                name=collection_name,
-                properties=[
-                    Property(name="text", data_type=DataType.TEXT),
-                    Property(name="metadata", data_type=DataType.OBJECT,
-                    nested_properties=[
-                        Property(name="chunk_id", data_type=DataType.TEXT),
-                        Property(name="token_len", data_type=DataType.INT),
-                ]),
-                ],
-            )
+            self.collection = self.client.collections.delete(collection_name)
+            
+        self.create_collection(collection_name)
+    
+    def create_collection(self,  collection_name: str) -> None:
+        self.collection = self.client.collections.create(
+            name=collection_name,
+            properties=[
+                Property(name="text", data_type=DataType.TEXT),
+                Property(name="metadata", data_type=DataType.OBJECT,
+                nested_properties=[
+                    Property(name="chunk_id", data_type=DataType.TEXT),
+                    Property(name="token_len", data_type=DataType.INT),
+            ]),
+            ],
+        )
         
-    def close(self):
+    def close_connection(self):
         self.client.close()
 
     def retrieve(self, query: str, top_k: int = 10) -> List[SearchResult]:

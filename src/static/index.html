@@ -13,7 +13,7 @@
       <h2>Ask a Question</h2>
       <input type="text" id="query" placeholder="Enter your query here..." />
       <label>Top K Results:
-        <input type="number" id="top_k" value="5" min="1" max="20" />
+        <input type="number" id="top_k" value="5" min="1" max="50" />
       </label>
       <button onclick="submitQuery()">Submit Query</button>
       <div id="queryResult" class="result"></div>
@@ -23,10 +23,10 @@
       <h2>Upload Document</h2>
       <input type="file" id="docFile" />
       <label>Min Token Length:
-        <input type="number" id="min_token_len" value="20" />
+        <input type="number" id="min_token_len" value="4" />
       </label>
       <label>Max Token Length:
-        <input type="number" id="max_token_len" value="250" />
+        <input type="number" id="max_token_len" value="64" />
       </label>
       <button onclick="uploadDocument()">Upload</button>
       <div id="uploadResult" class="result"></div>

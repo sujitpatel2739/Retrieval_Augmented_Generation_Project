@@ -44,9 +44,9 @@ async function uploadDocument() {
   });
 
   const data = await response.json();
-  if (response.ok && data.status !== "ERROR") {
+  if (response.ok && data.status == "SUCCESS") {
     resultDiv.innerHTML = `✅ Document processed successfully.`;
   } else {
-    resultDiv.innerHTML = `❌ <b>Error:</b> ${data.detail || 'Unknown error.'}`;
+    resultDiv.innerHTML = `❌ <b>${data.status}:</b> ${data.detail || 'Unknown error.'}`;
   }
 }

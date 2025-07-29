@@ -77,7 +77,9 @@ class RAGWorkflow(BaseWorkflow):
         
         # Generate answer
         context = self.get_context(results)
+        print(context)
         response, generate_log = self.answer_generator.execute(query, context)
+        print(response)
         logger.log_step(generate_log)
 
         step_logs.append(generate_log)
@@ -86,17 +88,20 @@ class RAGWorkflow(BaseWorkflow):
     
     def process_document(self, file_bytes: bytes, extension, max_token_len: int = 256, min_token_len: int = 4):
         """Accept and process files of type PDF, DOCX, TXT, HTML."""
-        try:
-            document_blocks = self.extractor.execute(file_bytes, extension, max_token_len, min_token_len)
-            cleaned_blocks = self.noise_remover.execute(document_blocks, min_words = 4)
-            chunks, embeddings = self.chunker.execute(cleaned_blocks)
+        print('process_document called')
+        # try:
+        document_blocks = self.extractor.execute(file_bytes, extension)
+        cleaned_blocks = self.noise_remover.execute(document_blocks, min_words = min_token_len)
+        chunks, embeddings = self.chunker.execute(cleaned_blocks, max_token_len, min_token_len)
+        
+        print(chunks)
+        print(len(chunks))
+        print(embeddings)
+        self.db_operator.add_documents(chunks, embeddings)
+        return {"status": "SUCCESS", "response": f"Inserted {len(chunks)} chunks"}
 
-            self.db_operator.add_documents(chunks, embeddings)
-
-            return {"status": "SUCCESS", "response": f"Inserted {len(chunks)} chunks"}
-
-        except Exception as e:
-            return {"status": "EXCEPTION", "status_code": 400, "detail": str(e)}
+        # except Exception as e:
+        #     return {"status": "EXCEPTION", "status_code": 400, "detail": str(e)}
         
         
     def get_context(self, results):
