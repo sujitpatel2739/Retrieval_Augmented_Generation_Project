@@ -53,6 +53,7 @@ async def process_query(request: QueryRequest):
     print("/query called")
     response, workflow_log = workflow.execute(request.query, request.top_k)
     logger.log_workflow(workflow_log)
+    print(response)
     return response
 
 

@@ -44,13 +44,13 @@ class RAGWorkflow(BaseWorkflow):
         step_logs: List[StepLog] = []
         
         # Route
-        intent, route_log = self.router.execute(query)
-        print(intent)
-        logger.log_step(route_log)
+        # intent, route_log = self.router.execute(query)
+        # print(intent)
+        # logger.log_step(route_log)
 
-        step_logs.append(route_log)
-        if intent != QueryIntent.ANSWER:
-            return {"status": "ERROR", "status_code": 400, "detail": f"INDETIFIED_QUERY_INTENT: {intent}"}, step_logs
+        # step_logs.append(route_log)
+        # if intent != QueryIntent.ANSWER:
+        #     return {"status": "ERROR", "status_code": 400, "detail": f"INDETIFIED_QUERY_INTENT: {intent}"}, step_logs
         
         # Reformulate
         reformulated, reform_log = self.reformulator.execute(query)
@@ -76,10 +76,10 @@ class RAGWorkflow(BaseWorkflow):
         #     return {"status": "ERROR", "status_code": 400, "detail": "INSUFFICIENT_CONTEXT"}, step_logs
         
         # Generate answer
-        context = self.get_context(results)
-        print(context)
+        context = "".join([result.text + "." for result in results])
+        print("context:", context)
+        
         response, generate_log = self.answer_generator.execute(query, context)
-        print(response)
         logger.log_step(generate_log)
 
         step_logs.append(generate_log)
@@ -104,5 +104,3 @@ class RAGWorkflow(BaseWorkflow):
         #     return {"status": "EXCEPTION", "status_code": 400, "detail": str(e)}
         
         
-    def get_context(self, results):
-        return [result.text for result in results]

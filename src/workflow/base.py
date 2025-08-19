@@ -32,7 +32,6 @@ class BaseWorkflow(ABC):
                 success=True,
                 final_response=result if result else None
             )
-            return result, workflow_log
             
         except Exception as e:
             result = {"status": "EXCEPTION", "status_code": 400, "detail": str(e)}

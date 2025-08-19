@@ -156,4 +156,3 @@ class DBOperator(BaseDBOperator):
 
         return sorted(merged.values(), key=lambda x: x.score, reverse=True)
     
-    
