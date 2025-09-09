@@ -1,13 +1,17 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Any, Dict
 import weaviate
 import weaviate.classes as wvc
 from weaviate.classes.config import Property, DataType
-import numpy as np
+from weaviate.classes.query import MetadataQuery
 from sentence_transformers import SentenceTransformer
 from ..models import SearchResult, Document
 from ..config import Settings
 from .base_component import BaseComponent
+from datetime import datetime
+import os
+import json
+import uuid
 
 import logging
 logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
@@ -24,14 +28,13 @@ class BaseDBOperator(BaseComponent):
 
     @abstractmethod
     def retrieve(self, query: str, top_k: int = 10) -> List[SearchResult]:
-        """Retrieve relevant context based on query"""
+        """Retrieve relevant context based on query""" 
         pass
 
 
 class DBOperator(BaseDBOperator):
     def __init__(
         self,
-        collection_name: str,
         embedding_model_name: str = "all-MiniLM-L6-v2",
     ):
         super().__init__()
@@ -39,16 +42,16 @@ class DBOperator(BaseDBOperator):
         settings = Settings()
         self.client = weaviate.connect_to_local(port=settings.weaviate_port, skip_init_checks=True)
         self.embedder = SentenceTransformer(embedding_model_name)
-        self.collection = None
+        self.collections_cache: Dict[str, Dict[str, Any]] = {} 
+        self.collections_cache = None
+        self.dump_file = "collections_dump.json"
         
         print("Weaviate connected: ", self.client.is_ready())
-        if self.client.collections.exists(collection_name):
-            self.collection = self.client.collections.delete(collection_name)
-            
-        self.create_collection(collection_name)
+        
     
-    def create_collection(self,  collection_name: str) -> None:
-        self.collection = self.client.collections.create(
+    def create_collection(self,  collection_name: str, user_id: str) -> None:
+        """Create a new collection in Weaviate with specified schema."""
+        new_collection = self.client.collections.create(
             name=collection_name,
             properties=[
                 Property(name="text", data_type=DataType.TEXT),
@@ -56,19 +59,107 @@ class DBOperator(BaseDBOperator):
                 nested_properties=[
                     Property(name="chunk_id", data_type=DataType.TEXT),
                     Property(name="token_len", data_type=DataType.INT),
-            ]),
+                    ]),
             ],
         )
+        collection_id = str(uuid.uuid4())
+        if user_id[:6] =='guest_':
+            collection_id = 'temp_' + collection_id
+            
+        self.collections_cache.setdefault(user_id, {})[collection_id] = new_collection
+        self.update_collections_cache(collection_name, collection_id, user_id)
+        return {"status": "SUCCESS", "collection_name": collection_name, "collection_id": collection_id,
+                'creation_datetime': self.collections_cache[user_id][collection_id]["last_modified"]}
         
-    def close_connection(self):
-        self.client.close()
+         
+    def change_collection(self, curr_collection_name: str, collection_name: str, collection_id: str, user_id: str) -> None:
+        """Switch to an existing collection in Weaviate."""
+        if user_id[:6] =='guest_':
+                self.delete_collection(curr_collection_name, collection_id, user_id)
+        if self.client.collections.exists(collection_name):
+            self.collections_cache[user_id][collection_id] = self.client.collections.get(collection_name)
+            return 
+        else:
+            raise ValueError(f"Collection {collection_name} does not exist.")
+        
+    def get_collections(self, user_id: str) -> Dict[str, Any]:
+        """Retrieve all collections from Weaviate."""
+        if not self.collections_cache:
+            return {'status': 'INTERNAL_ERROR', 'detail': 'Failed to get collections!'}
+        if user_id not in self.collections_cache:
+            return {}
+        
+        collections = self.collections_cache[user_id].values()
+        if not collections:
+            return {'status': 'ERROR', 'detail': 'No collections found! Please create a new collection.'}
+        
+        return collections
+        
+        
+    def delete_collection(self, collection_name: str, collection_id: str, user_id: str) -> None:
+        """Delete a collection in Weaviate."""
+        if self.client.collections.exists(collection_name):
+            self.client.collections.delete(collection_name)
+            self.collections_cache[user_id].pop(collection_id, None)
+            return
+        
+        
+    def update_collections_cache(self, collection_name: str, collection_id: str, user_id: str) -> None:
+        """
+        Save or update collection metadata in _dump.json
 
+        Args:
+            collection_id (str): Unique identifier for the collection
+            collection_name (str): Human-readable collection name
+            last_modified (str): ISO formatted timestamp of last modification
+        Returns:
+            None
+        """
+        
+        if os.path.exists(self.dump_file) and not self.collections_metadata:
+            with open(self.dump_file, "r", encoding="utf-8") as f:
+                try:
+                    self.collections_metadata = json.load(f)
+                except json.JSONDecodeError:
+                    self.collections_metadata = {}
+        else:
+            data = {}
+            
+
+        if not self.collections_cache[user_id].get(collection_id, None):
+            self.collections_cache[user_id][collection_id] = {
+                "collection_name": collection_name,
+                "creation_datetime": datetime.now().isoformat(),
+                "last_modified": datetime.now().isoformat(),
+            }
+        else:
+            self.collections_cache[user_id][collection_id]["collection_name"] = collection_name
+            self.collections_cache[user_id][collection_id]["last_modified"] = datetime.now().isoformat()
+        
+        
+    def dump_collection(self) -> None:
+        """Save or update collection metadata in collections_dump.json"""
+        with open(self.dump_file, "w", encoding="utf-8") as f:
+            json.dump(self.collections_metadata, f, indent=4, ensure_ascii=False)
+            
+
+    def close_connection(self, collection_name: str, collection_id: str) -> None:
+        """Close the Weaviate client connection."""
+        if collection_id[:5] == 'temp_':
+            self.delete_collection(collection_name)
+        self.dump_collection()
+        self.client.close()
+        
+        
     def retrieve(self, query: str, top_k: int = 10) -> List[SearchResult]:
         semantic_results = self.semantic_search(query, top_k=top_k)
         # return self.rerank(semantic_results)
         return semantic_results
 
-    def add_documents(self, documents: List[Document], embeddings: List[Any]) -> None:
+    def add_documents(self, documents: List[Document], embeddings: List[Any], collection_name: str, collection_id, user_id: str) -> Dict[str, Any]:
+        """Add documents to the Weaviate collection."""
+        if not self.collections_cache[user_id].get(collection_id, None):
+            self.create_collection(collection_name, user_id)
         objects = list()
         
         for doc, embedding in zip(documents, embeddings):
@@ -78,16 +169,17 @@ class DBOperator(BaseDBOperator):
             vector = embedding.detach().cpu().numpy().tolist()
             ))
         
-        self.collection.data.insert_many(objects)
+        self.collections_cache[user_id][collection_id].insert_many(objects)
+        self.update_collections_cache(self.collection.name, collection_id, user_id)
+        return {"status": "SUCCESS", "detail": f"Inserted {len(objects)} documents into collection {self.collection.name}."}
         
 
-    from weaviate.classes.query import MetadataQuery
-
-    def semantic_search(self, query: str, top_k: int = 15) -> List[SearchResult]:
+    def semantic_search(self, query: str, top_k: int, collection_id: str, user_id: str) -> List[SearchResult]:
+        """Perform semantic search using Weaviate."""
         query_vector = self.embedder.encode(query, normalize_embeddings=True, convert_to_tensor=True)
         query_vector = query_vector.detach().cpu().numpy().tolist()
 
-        response = self.collection.query.near_vector(
+        response = self.collections_cache[user_id][collection_id].query.near_vector(
             near_vector=query_vector,
             limit=top_k,
             return_metadata = wvc.query.MetadataQuery(distance=True)
@@ -104,7 +196,7 @@ class DBOperator(BaseDBOperator):
         ]
         
 
-    def keyword_search(self, keywords: List[str], top_k: int = 5) -> List[SearchResult]:
+    def keyword_search(self, keywords: List[str], top_k: int, user_id: str, collection_id: str) -> List[SearchResult]:
         if not keywords:
             return []
     
@@ -120,9 +212,8 @@ class DBOperator(BaseDBOperator):
             ]
         }
     
-        collection = self.client.collections.get(self.collection_name)
         response = (
-            collection.query
+            self.collections_cache[user_id][collection_id].query
             .where(where_filter)
             .with_limit(top_k)
             .fetch()
@@ -149,6 +240,7 @@ class DBOperator(BaseDBOperator):
 
 
     def rerank(self, semantic_results: List[SearchResult]) -> List[SearchResult]:
+        """Rerank results by merging semantic and keyword search results."""
         merged = {}
 
         for result in semantic_results:

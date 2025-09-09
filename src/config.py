@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     # Weviate
     weaviate_url: str = "http://localhost:8080"
     weaviate_port: int = 8080
-    weaviate_primary_class: str = "Document"
+    weaviate_primary_class: str = "temporary"
     
     # LLM Settings
     router_model: str = "deepseek/deepseek-chat-v3-0324:free"

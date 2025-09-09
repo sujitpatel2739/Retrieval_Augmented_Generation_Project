@@ -3,19 +3,19 @@ from enum import Enum
 from openai import OpenAI
 from .base_component import BaseComponent
 from ..config import Settings
-from ..models import QueryIntent
+from ..models import QueryStatus
 
 class BaseRequestRouter(BaseComponent):
     """Base class for routing user queries"""
     def __init__(self):
         super().__init__(name="router")
     
-    def _execute(self, query: str) -> QueryIntent:
+    def _execute(self, query: str) -> QueryStatus:
         """Execute routing"""
         return self.route_query(query)
     
     @abstractmethod
-    def route_query(self, query: str) -> QueryIntent:
+    def route_query(self, query: str) -> QueryStatus:
         """Determine the intent of the query."""
         pass
 
@@ -25,7 +25,7 @@ class LLMRequestRouter(BaseRequestRouter):
         self.client = OpenAI(base_url = Settings().openrouter_base_url, api_key=api_key)
         self.model = model
         
-    def route_query(self, query: str) -> QueryIntent:
+    def route_query(self, query: str) -> QueryStatus:
         prompt = """You are a query router. Analyze the following query and determine how it should be handled.
         Return EXACTLY ONE of these values (nothing else): ANSWER, CLARIFY, or REJECT
         
@@ -46,4 +46,4 @@ class LLMRequestRouter(BaseRequestRouter):
         )
         
         decision = response.choices[0].message.content.strip().upper()
-        return QueryIntent[decision] 
+        return QueryStatus[decision] 

@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
         OPENAI_API_KEY=OPENAI_API_KEY
     )
     yield
-    workflow.db_operator.close_connection()
+    workflow.shutdown()
     print("Workflow Lifespan Ended! All connections closed")
 
 app = FastAPI(lifespan=lifespan)

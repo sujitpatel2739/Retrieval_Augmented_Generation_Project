@@ -43,15 +43,6 @@ class RAGWorkflow(BaseWorkflow):
     def _execute(self, query: str, top_k: int = 10) -> Tuple[Optional[RAGResponse], List[StepLog]]:
         step_logs: List[StepLog] = []
         
-        # Route
-        # intent, route_log = self.router.execute(query)
-        # print(intent)
-        # logger.log_step(route_log)
-
-        # step_logs.append(route_log)
-        # if intent != QueryIntent.ANSWER:
-        #     return {"status": "ERROR", "status_code": 400, "detail": f"INDETIFIED_QUERY_INTENT: {intent}"}, step_logs
-        
         # Reformulate
         reformulated, reform_log = self.reformulator.execute(query)
         print(reformulated)
@@ -66,14 +57,6 @@ class RAGWorkflow(BaseWorkflow):
         print(results)
         step_logs.append(retrieve_log)
         logger.log_step(retrieve_log)
-        
-        # # Check completion
-        # completion_score, check_log = self.completion_checker.execute(query, context)
-        # logger.log_step(check_log)
-        # step_logs.append(check_log)
-
-        # if completion_score < self.completion_threshold:
-        #     return {"status": "ERROR", "status_code": 400, "detail": "INSUFFICIENT_CONTEXT"}, step_logs
         
         # Generate answer
         context = "".join([result.text + "." for result in results])
@@ -99,8 +82,10 @@ class RAGWorkflow(BaseWorkflow):
         print(embeddings)
         self.db_operator.add_documents(chunks, embeddings)
         return {"status": "SUCCESS", "response": f"Inserted {len(chunks)} chunks"}
-
-        # except Exception as e:
-        #     return {"status": "EXCEPTION", "status_code": 400, "detail": str(e)}
+    
+    def shutdown(self):
+        self.db_operator.close_connection()
+        print("DB connection closed!")
+        
         
         
