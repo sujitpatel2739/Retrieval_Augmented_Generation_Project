@@ -4,10 +4,12 @@ from typing import Optional, List
 import uuid
 from sqlalchemy.sql import func
 
-def create_collection(db: Session, user_id: uuid.UUID, name: str) -> Collection:
+def create_collection(db: Session, id: uuid.UUID, user_id: uuid.UUID, title: str, name: str) -> Collection:
     """Create a new collection"""
     db_collection = Collection(
+        id = id,
         user_id=user_id,
+        title=title,
         name=name
     )
     db.add(db_collection)
@@ -26,8 +28,8 @@ def get_collections_by_user_id(db: Session, user_id: uuid.UUID) -> List[Collecti
 def update_collection(
     db: Session, 
     collection_id: uuid.UUID, 
-    name: str = None,
-    active: bool = None,
+    title: str = None,
+    archived: bool = None,
     doc_count: int = None
 ) -> Optional[Collection]:
     """Update collection metadata"""
@@ -35,10 +37,10 @@ def update_collection(
     if not db_collection:
         return None
     
-    if name is not None:
-        db_collection.name = name
-    if active is not None:
-        db_collection.active = active
+    if title is not None:
+        db_collection.title = title
+    if archived is not None:
+        db_collection.archived = archived
     if doc_count is not None:
         db_collection.doc_count = doc_count
     

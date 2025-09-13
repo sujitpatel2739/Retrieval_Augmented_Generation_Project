@@ -1,8 +1,7 @@
 from .base_component import BaseComponent
 from .router import BaseRequestRouter, LLMRequestRouter
 from .reformulator import BaseQueryReformulator, LLMQueryReformulator
-from .db_operator import BaseDBOperator, DBOperator
-from .completion_checker import BaseCompletionChecker, LLMCompletionChecker
+from .vec_operator import BaseVecOperator, VecOperator
 from .answer_generator import BaseAnswerGenerator, LLMAnswerGenerator
 from .preprocessor import UniversalExtractor, NoiseRemover, SmartAdaptiveChunker
 
@@ -15,10 +14,8 @@ __all__ = [
     'LLMRequestRouter',
     'BaseQueryReformulator',
     'LLMQueryReformulator',
-    'BaseDBOperator',
-    'DBOperator',
-    'BaseCompletionChecker',
-    'LLMCompletionChecker',
+    'BaseVecOperator',
+    'VecOperator',
     'BaseAnswerGenerator',
     'LLMAnswerGenerator'
 ] 

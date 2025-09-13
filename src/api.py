@@ -8,12 +8,13 @@ import uvicorn
 from datetime import datetime
 from .config import Settings
 from .logger.json_logger import JsonLogger
-from .workflow import RAGWorkflow
+from .workflow import Workflow
 import os
 from dotenv import load_dotenv
 
+
 # Load environment variables from .env
-load_dotenv()
+load_dotenv('.env')
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Load settings
@@ -24,20 +25,20 @@ class QueryRequest(BaseModel):
     query: str
     top_k: int
 
-workflow = None
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global workflow
     # Initialize workflow
-    workflow = RAGWorkflow(
-        completion_threshold=settings.completion_threshold,
-        collection_name=str(settings.weaviate_primary_class),
-        OPENAI_API_KEY=OPENAI_API_KEY
+    Workflow.init(
+        OPENAI_API_KEY=settings.openai_api_key,
+        completion_threshold=0.7
     )
+    print("[LIFESPAN] Workflow initialized")
+
     yield
-    workflow.shutdown()
-    print("Workflow Lifespan Ended! All connections closed")
+
+    # ---- SHUTDOWN ----
+    Workflow.shutdown()
+    print("[LIFESPAN] Workflow shut down")
 
 app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="src/static"), name="static")
@@ -51,7 +52,7 @@ def serve_home():
 async def process_query(request: QueryRequest):
     """Process a query through the RAG workflow"""
     print("/query called")
-    response, workflow_log = workflow.execute(request.query, request.top_k)
+    response, workflow_log = Workflow.execute(request.query, request.top_k)
     logger.log_workflow(workflow_log)
     print(response)
     return response
@@ -75,7 +76,7 @@ async def process_file(
     except Exception as e:
         return {"status": "EXCEPTION", "status_code": 400, "detail": f"Cannot read Bytes: {e}"}
 
-    response = workflow.process_document(
+    response = Workflow.process_document(
         file_bytes=file_bytes,
         extension=extension,
         max_token_len=max_token_len,
@@ -91,7 +92,7 @@ async def get_workflow_logs(
     end_time: Optional[datetime] = None
 ):
     """Get workflow logs with optional filtering"""
-    return workflow.logger.get_workflow_logs(workflow_id, start_time, end_time)
+    return Workflow.logger.get_workflow_logs(workflow_id, start_time, end_time)
 
 @app.get("/logs/finetuning")
 async def export_logs_for_finetuning(
@@ -99,7 +100,7 @@ async def export_logs_for_finetuning(
     end_time: Optional[datetime] = None
 ):
     """Export logs in OpenAI finetuning format"""
-    return workflow.logger.export_for_finetuning(start_time, end_time)
+    return Workflow.logger.export_for_finetuning(start_time, end_time)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
 from .base import BaseWorkflow
-from .rag_workflow import RAGWorkflow
+from .rag_workflow import Workflow
 
-__all__ = ['BaseWorkflow', 'RAGWorkflow'] 
+__all__ = ['BaseWorkflow', 'Workflow'] 

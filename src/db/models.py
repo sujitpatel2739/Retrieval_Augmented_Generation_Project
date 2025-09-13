@@ -22,11 +22,12 @@ class Collection(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    title = Column(Text, nullable=False)
     name = Column(Text, nullable=False)
     init_date = Column(DateTime(timezone=True), server_default=func.now())
     last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     doc_count = Column(Integer, default=0)
-    active = Column(Boolean, default=True)
+    archived = Column(Boolean, default=True)
     
     # Relationships
     user = relationship("User", back_populates="collections")
@@ -37,7 +38,7 @@ class Message(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     collection_id = Column(UUID(as_uuid=True), ForeignKey("collections.id", ondelete="CASCADE"), nullable=False)
-    sender = Column(Text, nullable=False)
+    role = Column(Text, nullable=False)
     message = Column(Text, nullable=False)
     confidence_score = Column(Float, nullable=True)  # Only for assistant messages
     keywords = Column(ARRAY(Text), nullable=True)  # Only for assistant messages
@@ -46,7 +47,7 @@ class Message(Base):
     
     # Check constraint for sender
     __table_args__ = (
-        CheckConstraint("sender IN ('user', 'assistant')", name="check_sender_type"),
+        CheckConstraint("role IN ('user', 'assistant')", name="check_role_type"),
     )
     
     # Relationships
