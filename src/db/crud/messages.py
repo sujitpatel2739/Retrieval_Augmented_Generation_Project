@@ -10,7 +10,6 @@ def create_message(
     message: str,
     confidence_score: Optional[float] = None,
     keywords: Optional[List[str]] = None,
-    sources: Optional[Dict[str, Any]] = None
 ) -> Message:
     """Create a new message"""
     db_message = Message(
@@ -19,7 +18,6 @@ def create_message(
         message=message,
         confidence_score=confidence_score,
         keywords=keywords,
-        sources=sources
     )
     db.add(db_message)
     db.commit()

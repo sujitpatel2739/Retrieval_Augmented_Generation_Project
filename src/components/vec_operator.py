@@ -99,6 +99,7 @@ class VecOperator(BaseVecOperator):
         
         
     def delete_collection(self, collection_name: str) -> None:
+        
         """Delete a collection in Weaviate."""
         
         if self.client.collections.exists(collection_name):
@@ -106,45 +107,6 @@ class VecOperator(BaseVecOperator):
             return {"status": "SUCCESS", "detail": f"Collection {collection_name} deleted."}
         else:
             return {"status": "ERROR", "detail": f"Collection {collection_name} does not exist."}
-        
-        
-    def update_collections_cache(self, collection_name: str, collection_id: str, user_id: str) -> None:
-        """
-        Save or update collection metadata in _dump.json
-
-        Args:
-            collection_id (str): Unique identifier for the collection
-            collection_name (str): Human-readable collection name
-            last_modified (str): ISO formatted timestamp of last modification
-        Returns:
-            None
-        """
-        
-        if os.path.exists(self.dump_file) and not self.collections_metadata:
-            with open(self.dump_file, "r", encoding="utf-8") as f:
-                try:
-                    self.collections_metadata = json.load(f)
-                except json.JSONDecodeError:
-                    self.collections_metadata = {}
-        else:
-            data = {}
-            
-
-        if not self.collections_cache[user_id].get(collection_id, None):
-            self.collections_cache[user_id][collection_id] = {
-                "collection_name": collection_name,
-                "creation_datetime": datetime.now().isoformat(),
-                "last_modified": datetime.now().isoformat(),
-            }
-        else:
-            self.collections_cache[user_id][collection_id]["collection_name"] = collection_name
-            self.collections_cache[user_id][collection_id]["last_modified"] = datetime.now().isoformat()
-        
-        
-    def dump_collection(self) -> None:
-        """Save or update collection metadata in collections_dump.json"""
-        with open(self.dump_file, "w", encoding="utf-8") as f:
-            json.dump(self.collections_metadata, f, indent=4, ensure_ascii=False)
             
 
     def close_connection(self, collection_name: str, collection_id: str) -> None:
@@ -176,7 +138,7 @@ class VecOperator(BaseVecOperator):
             return {"status": "ERROR", "detail": f"Collection {collection_name} does not exist!"}
         self.client.insert_many(objects)
         
-        return {"status": "SUCCESS", 'doc_count': len(documents), "detail": f"Inserted {len(objects)} documents into collection {self.collection.name}."}
+        return {"status": "SUCCESS", 'doc_count': len(documents), "last_updated": datetime.now().isoformat()}
         
 
     def semantic_search(self, query: str, top_k: int, collection_id: str, user_id: str) -> List[SearchResult]:

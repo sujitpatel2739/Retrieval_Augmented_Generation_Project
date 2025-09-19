@@ -23,6 +23,8 @@ class DocumentUpload(BaseModel):
     db: Session = Depends(get_db)
     
 class CollectionUpdate(BaseModel):
+    id: uuid.UUID
+    name: str
     title: Optional[str] = None
     doc_count: Optional[int] = None
     archived: Optional[bool] = None
@@ -46,7 +48,7 @@ def is_user_authenticated(user_id: Optional[uuid.UUID], db: Session) -> bool:
         return False
     return crud_users.get_user_by_id(db, user_id=user_id) is not None
 
-@router.post("/")
+
 def create_collection(user_id: uuid.UUID, title: str, db: Session = Depends(get_db)):
     """Create a new collection"""
     
@@ -84,22 +86,16 @@ def create_collection(user_id: uuid.UUID, title: str, db: Session = Depends(get_
         }
 
 @router.get("/{collection_id}")
-def get_collection(collection_id: uuid.UUID, db: Session = Depends(get_db)):
+def get_collection(collection_id: uuid.UUID, user_id: uuid_UUID, db: Session = Depends(get_db)):
     """Get collection details"""
-    # Try to get from PostgreSQL first
+    if not is_user_authenticated(user_id, db):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not authenticated"
+        )
     db_collection = crud_collections.get_collection_by_id(db, collection_id=collection_id)
     if db_collection:
         return db_collection
-    
-    # If not in PostgreSQL, get from Weaviate
-    weaviate_stats = Workflow.get_collection_stats(collection_id)
-    if weaviate_stats:
-        return {
-            "id": collection_id,
-            "name": "Weaviate Collection",
-            "doc_count": weaviate_stats.get("doc_count", 0),
-            "status": weaviate_stats.get("status", "archived")
-        }
     
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -109,6 +105,11 @@ def get_collection(collection_id: uuid.UUID, db: Session = Depends(get_db)):
 @router.get("/users/{user_id}/collections/", response_model=List[CollectionResponse])
 def get_user_collections(user_id: uuid.UUID, db: Session = Depends(get_db)):
     """List collections for a user"""
+    if not is_user_authenticated(user_id, db):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not authenticated"
+        )
     # Verify user exists
     db_user = crud_users.get_user_by_id(db, user_id=user_id)
     if not db_user:
@@ -119,9 +120,9 @@ def get_user_collections(user_id: uuid.UUID, db: Session = Depends(get_db)):
     
     return crud_collections.get_collections_by_user_id(db, user_id=user_id)
 
+
 @router.patch("/{collection_id}")
 def update_collection(
-    collection_id: uuid.UUID, 
     collection_update: CollectionUpdate, 
     db: Session = Depends(get_db)
 ):
@@ -129,55 +130,67 @@ def update_collection(
     # Only update PostgreSQL if collection exists there
     updated_collection = crud_collections.update_collection(
             db=db,
-            collection_id=collection_id,
+            collection_id=id,
             name=collection_update.name,
             archived=collection_update.archived,
             doc_count=collection_update.doc_count
         )
-    if not updated_collection:
-        return {"status": "ERROR", "detail": "Collection not found in PostgreSQL"}
-    return updated_collection
+    if updated_collection:
+        return updated_collection
+    return {"status": "ERROR", "detail": "Collection not found in PostgreSQL"}
+
 
 @router.post("/{collection_id}/upload")
 def upload_documents(new_upload: DocumentUpload):
     """Upload documents to a collection"""
+    id = new_upload.id
+    coll_name = new_upload.name
     if new_upload.id == None:
-        wf_response = create_collection(new_upload.user_id, new_upload.title)
+        createcoll_response = create_collection(new_upload.user_id, new_upload.title)
+        id = createcoll_response['id']
+        coll_name = createcoll_response['name']
+        
     # Upload to Weaviate
     upload_response = Workflow.process_document(new_upload.name, new_upload.file)
+    if upload_response['status'] != "ERROR":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=upload_response['detail']
+        )
     
     # Update PostgreSQL if user is authenticated
     if new_upload.user_id and is_user_authenticated(new_upload.user_id, new_upload.db):
         db_collection = crud_collections.get_collection_by_id(Depends(get_db), collection_id=new_upload.id)
         if db_collection:
             # Update document count
-            crud_collections.update_collection(
+            update_response=crud_collections.update_collection(
                 db=Depends(get_db),
-                collection_id=id,
-                doc_count = upload_response.get("doc_count", 0) + db_collection.doc_count
+                id=createcoll_response['id'],
+                title=createcoll_response['title'],
+                name=createcoll_response['name'],
+                doc_count = upload_response.get("doc_count", 0) + db_collection.doc_count,
+                archived=new_upload.archived
             )
-            update_response = crud_collections.update_collection(
-                collection_id=wf_response['id'],
-                doc_count=upload_response.get("doc_count", 0)
-            )
-        else:
-            crud_collections.create_collection(Depends(get_db), id=wf_response['id'], user_id=new_upload.user_id, title=new_upload.title, name=wf_response['name'])
+
     return {
-        "collection_id": wf_response['id'],
-        'name': wf_response['name'],
+        "id": id,
+        'title': new_upload.title,
+        'name': coll_name,
         "doc_count": upload_response['doc_count'],
-        "status": upload_response.get("status", "uploaded")
+        'last_updated': upload_response['last_updated']
     }
 
 @router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_collection(collection_id: uuid.UUID, collection_name: str, user_id: uuid.UUID, db: Session = Depends(get_db)):
     """Delete collection (cascade deletes messages)"""
+
     # Delete from Weaviate
     wf_response = Workflow.delete_collection(collection_name)
     
     # Delete from PostgreSQL
-    if user_id:
+    if user_id and not is_user_authenticated(user_id, db):
         pg_success = crud_collections.delete_collection(db, collection_id=collection_id)
+        return {"status": "SUCCESS", "detail": "Collection deleted."}
     
     # Consider successful if deleted from either database
     if not pg_success and not wf_response:

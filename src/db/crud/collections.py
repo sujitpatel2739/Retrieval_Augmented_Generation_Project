@@ -17,9 +17,9 @@ def create_collection(db: Session, id: uuid.UUID, user_id: uuid.UUID, title: str
     db.refresh(db_collection)
     return db_collection
 
-def get_collection_by_id(db: Session, collection_id: uuid.UUID) -> Optional[Collection]:
+def get_collection_by_id(db: Session, id: uuid.UUID) -> Optional[Collection]:
     """Get collection by ID"""
-    return db.query(Collection).filter(Collection.id == collection_id).first()
+    return db.query(Collection).filter(Collection.id == id).first()
 
 def get_collections_by_user_id(db: Session, user_id: uuid.UUID) -> List[Collection]:
     """Get all collections for a specific user"""
@@ -27,13 +27,13 @@ def get_collections_by_user_id(db: Session, user_id: uuid.UUID) -> List[Collecti
 
 def update_collection(
     db: Session, 
-    collection_id: uuid.UUID, 
+    id: uuid.UUID, 
     title: str = None,
     archived: bool = None,
     doc_count: int = None
 ) -> Optional[Collection]:
     """Update collection metadata"""
-    db_collection = db.query(Collection).filter(Collection.id == collection_id).first()
+    db_collection = db.query(Collection).filter(Collection.id == id).first()
     if not db_collection:
         return None
     
@@ -51,9 +51,9 @@ def update_collection(
     db.refresh(db_collection)
     return db_collection
 
-def delete_collection(db: Session, collection_id: uuid.UUID) -> bool:
+def delete_collection(db: Session, id: uuid.UUID) -> bool:
     """Delete a collection (cascade deletes messages)"""
-    db_collection = db.query(Collection).filter(Collection.id == collection_id).first()
+    db_collection = db.query(Collection).filter(Collection.id == id).first()
     if not db_collection:
         return False
     

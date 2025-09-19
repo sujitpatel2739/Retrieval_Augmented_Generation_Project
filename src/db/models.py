@@ -42,8 +42,8 @@ class Message(Base):
     message = Column(Text, nullable=False)
     confidence_score = Column(Float, nullable=True)  # Only for assistant messages
     keywords = Column(ARRAY(Text), nullable=True)  # Only for assistant messages
-    sources = Column(JSONB, nullable=True)  # Citations {text, relevance_score, ...}
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
     
     # Check constraint for sender
     __table_args__ = (

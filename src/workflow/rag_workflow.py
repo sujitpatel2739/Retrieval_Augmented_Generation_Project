@@ -52,7 +52,7 @@ class Workflow(BaseWorkflow):
         print("[Workflow] Initialized successfully")
     
     @classmethod
-    def execute(cls, query: str, top_k: int = 10) -> Tuple[Optional[RAGResponse], List[StepLog]]:
+    def get_rag_response(cls, query: str, collection_name: str, top_k: int = 10) -> Tuple[Optional[RAGResponse], List[StepLog]]:
         step_logs: List[StepLog] = []
     
         # Step 1: Reformulate
@@ -61,17 +61,18 @@ class Workflow(BaseWorkflow):
         step_logs.append(reform_log)
 
         # Step 2: Retrieve
-        results, retrieve_log = cls.vec_operator.execute(reformulated.refined_text, top_k=top_k)
+        results, retrieve_log = cls.vec_operator.execute(reformulated.refined_text, collection_name = collection_name, top_k=top_k)
         logger.log_step(retrieve_log)
         step_logs.append(retrieve_log)
 
         # Step 3: Generate Answer
-        context = " ".join([result.text for result in results])
+        context_texts = [result.text for result in results]
+        context = " ".join(context_texts)
         response, generate_log = cls.answer_generator.execute(query, context)
         logger.log_step(generate_log)
         step_logs.append(generate_log)
 
-        return response, step_logs
+        return response
 
     @classmethod
     def create_collection(title: str, user_id: Any):
@@ -100,9 +101,9 @@ class Workflow(BaseWorkflow):
         # Step 3: Chunk
         chunks, embeddings = cls.chunker.execute(cleaned_blocks, max_token_len, min_token_len)
         # Step 4: Store in vector DB
-        cls.vec_operator.add_documents(collection_name, chunks, embeddings)
+        adddoc_response = cls.vec_operator.add_documents(collection_name, chunks, embeddings)
 
-        return {"status": "SUCCESS", "response": f"Inserted {len(chunks)} chunks"}
+        return adddoc_response
 
     @classmethod
     def delete_collection(cls, collection_name: str) -> Dict:
