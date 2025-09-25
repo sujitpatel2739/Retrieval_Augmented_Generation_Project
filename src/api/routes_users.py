@@ -4,9 +4,11 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional
 import uuid
 from datetime import datetime
-
+from datetime import timedelta
 from ..db.session import get_db
 from ..db.crud import users as crud_users
+from ..db.models import User
+from ..core.security import create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, get_current_user
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -15,6 +17,14 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
 
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
 
 class UserResponse(BaseModel):
     id: uuid.UUID
@@ -27,32 +37,24 @@ class UserResponse(BaseModel):
 
 
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
-    """Create a new user"""
-    # Check if user already exists
+def register_user(user: UserCreate, db: Session = Depends(get_db)):
+    """Register a new user"""
     db_user = crud_users.get_user_by_email(db, email=user.email)
     if db_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    return crud_users.create_user(db=db, name=user.name, email=user.email, password=user.password)
 
-    # Pass plain password → will be hashed in CRUD layer
-    return crud_users.create_user(
-        db=db,
-        name=user.name,
-        email=user.email,
-        password=user.password,
+
+@router.post("/login", response_model=TokenResponse)
+def login_user(user: UserLogin, db: Session = Depends(get_db)):
+    """Login user and return JWT token"""
+    db_user = crud_users.authenticate_user(db, email=user.email, password=user.password)
+    if not db_user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": str(db_user.id)}, expires_delta=access_token_expires
     )
-
-
-@router.get("/{user_id}", response_model=UserResponse)
-def get_user(user_id: uuid.UUID, db: Session = Depends(get_db)):
-    """Get user by ID"""
-    db_user = crud_users.get_user_by_id(db, user_id=user_id)
-    if db_user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    return db_user
+    return {"access_token": access_token, "token_type": "bearer"}

@@ -69,9 +69,7 @@ class VecOperator(BaseVecOperator):
                     ]),
             ],
         )
-            
-        self.collections_cache.setdefault(user_id, {})[collection_id] = new_collection
-        self.update_collections_cache(collection_name, collection_id, user_id)
+
         return {"status": "SUCCESS", "name": collection_name, "id": collection_id}
         
          

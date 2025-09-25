@@ -8,6 +8,8 @@ from datetime import datetime
 from ..db.session import get_db
 from ..db.crud import collections as crud_collections
 from ..db.crud import users as crud_users
+from ..db.models import User
+from ..core.security import get_current_user
 from ..workflow import Workflow
 
 router = APIRouter(prefix="/collections", tags=["collections"])
@@ -15,11 +17,11 @@ router = APIRouter(prefix="/collections", tags=["collections"])
 # Pydantic schemas
 class DocumentUpload(BaseModel):
     id: uuid.UUID
-    title: str
+    title: str = 'Untitled chat'
     name: str
     collection_id: uuid.UUID
     file: UploadFile = File(...)
-    user_id: Optional[uuid.UUID] = None
+    current_user: User = Depends(get_current_user)
     db: Session = Depends(get_db)
     
 class CollectionUpdate(BaseModel):
@@ -31,8 +33,8 @@ class CollectionUpdate(BaseModel):
 
 class CollectionResponse(BaseModel):
     id: uuid.UUID
-    user_id: uuid.UUID
-    title: str
+    current_user: User = Depends(get_current_user)
+    title: str = 'Untitled chat'
     name: str
     init_date: datetime
     last_updated: datetime
@@ -42,25 +44,19 @@ class CollectionResponse(BaseModel):
     class Config:
         from_attributes = True
 
-def is_user_authenticated(user_id: Optional[uuid.UUID], db: Session) -> bool:
-    """Check if user is authenticated (simplified - replace with proper auth logic)"""
-    if not user_id:
-        return False
-    return crud_users.get_user_by_id(db, user_id=user_id) is not None
 
-
-def create_collection(user_id: uuid.UUID, title: str, db: Session = Depends(get_db)):
+def create_collection(current_user: User = Depends(get_current_user), title: str = 'Untitled chat', db: Session = Depends(get_db)):
     """Create a new collection"""
     
     # Always create collection in Weaviate
     wf_response = Workflow.create_collection(
-        user_id=user_id
+        user_id = current_user.id
     )
     
     # Only create in PostgreSQL if user is authenticated
-    if user_id and is_user_authenticated(user_id, db):
+    if get_current_user():
         # Verify user exists
-        db_user = crud_users.get_user_by_id(db, user_id=user_id)
+        db_user = crud_users.get_user_by_id(db, user_id = current_user.id)
         if not db_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -70,7 +66,7 @@ def create_collection(user_id: uuid.UUID, title: str, db: Session = Depends(get_
         db_collection = crud_collections.create_collection(
             db=db,
             id = wf_response['id'],
-            user_id=user_id,
+            user_id = current_user.id,
             title=title,
             name = wf_response['name']
         )
@@ -86,9 +82,10 @@ def create_collection(user_id: uuid.UUID, title: str, db: Session = Depends(get_
         }
 
 @router.get("/{collection_id}")
-def get_collection(collection_id: uuid.UUID, user_id: uuid_UUID, db: Session = Depends(get_db)):
+def get_collection(collection_id: uuid.UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get collection details"""
-    if not is_user_authenticated(user_id, db):
+    
+    if not get_current_user():
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not authenticated"
@@ -103,22 +100,22 @@ def get_collection(collection_id: uuid.UUID, user_id: uuid_UUID, db: Session = D
     )
 
 @router.get("/users/{user_id}/collections/", response_model=List[CollectionResponse])
-def get_user_collections(user_id: uuid.UUID, db: Session = Depends(get_db)):
+def get_user_collections(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """List collections for a user"""
-    if not is_user_authenticated(user_id, db):
+    if not get_current_user():
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not authenticated"
         )
     # Verify user exists
-    db_user = crud_users.get_user_by_id(db, user_id=user_id)
+    db_user = crud_users.get_user_by_id(db, user_id = current_user.id)
     if not db_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
     
-    return crud_collections.get_collections_by_user_id(db, user_id=user_id)
+    return crud_collections.get_collections_by_user_id(db, user_id = current_user.id)
 
 
 @router.patch("/{collection_id}")
@@ -130,7 +127,7 @@ def update_collection(
     # Only update PostgreSQL if collection exists there
     updated_collection = crud_collections.update_collection(
             db=db,
-            collection_id=id,
+            collection_id=collection_update.id,
             name=collection_update.name,
             archived=collection_update.archived,
             doc_count=collection_update.doc_count
@@ -159,7 +156,7 @@ def upload_documents(new_upload: DocumentUpload):
         )
     
     # Update PostgreSQL if user is authenticated
-    if new_upload.user_id and is_user_authenticated(new_upload.user_id, new_upload.db):
+    if get_current_user():
         db_collection = crud_collections.get_collection_by_id(Depends(get_db), collection_id=new_upload.id)
         if db_collection:
             # Update document count
@@ -181,14 +178,14 @@ def upload_documents(new_upload: DocumentUpload):
     }
 
 @router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_collection(collection_id: uuid.UUID, collection_name: str, user_id: uuid.UUID, db: Session = Depends(get_db)):
+def delete_collection(collection_id: uuid.UUID, collection_name: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Delete collection (cascade deletes messages)"""
 
     # Delete from Weaviate
     wf_response = Workflow.delete_collection(collection_name)
     
     # Delete from PostgreSQL
-    if user_id and not is_user_authenticated(user_id, db):
+    if get_current_user():
         pg_success = crud_collections.delete_collection(db, collection_id=collection_id)
         return {"status": "SUCCESS", "detail": "Collection deleted."}
     

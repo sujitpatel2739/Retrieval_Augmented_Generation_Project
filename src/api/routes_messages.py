@@ -9,6 +9,8 @@ from ..db.session import get_db
 from ..db.crud import messages as crud_messages
 from ..db.crud import collections as crud_collections
 from ..db.crud import users as crud_users
+from ..db.models import User
+from ..core.security import get_current_user
 from ..workflow import Workflow
 
 router = APIRouter(prefix="/query", tags=["query"])
@@ -24,14 +26,9 @@ class Query(BaseModel):
     class Config:
         from_attributes = True
 
-def is_user_authenticated(user_id: Optional[uuid.UUID], db: Session) -> bool:
-    """Check if user is authenticated (simplified - replace with proper auth logic)"""
-    if not user_id:
-        return False
-    return crud_users.get_user_by_id(db, user_id=user_id) is not None
 
 @router.post("/")
-def create_message(new_query: Query, user_id: Optional[uuid.UUID] = None, db: Session = Depends(get_db)):
+def create_message(new_query: Query, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Add a query to a collection and get AI response"""
     # Get AI response from Weaviate
     rag_response = Workflow.get_rag_response(
@@ -41,7 +38,7 @@ def create_message(new_query: Query, user_id: Optional[uuid.UUID] = None, db: Se
     )
     
     # Store user query in PostgreSQL if authenticated
-    if user_id and is_user_authenticated(user_id, db):
+    if get_current_user():
         # Verify collection exists in PostgreSQL
         db_collection = crud_collections.get_collection_by_id(db, collection_id=new_query.collection_id)
         if not db_collection:
@@ -94,10 +91,10 @@ def create_message(new_query: Query, user_id: Optional[uuid.UUID] = None, db: Se
         
 
 @router.get("/{collection_id}/")
-def get_messages(collection_id: uuid.UUID, user_id: Optional[uuid.UUID] = None, db: Session = Depends(get_db)):
+def get_messages(collection_id: uuid.UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """List all messages in a collection"""
     # Try PostgreSQL first if user is authenticated
-    if user_id and is_user_authenticated(user_id, db):
+    if get_current_user():
         db_collection = crud_collections.get_collection_by_id(db, collection_id=collection_id)
         if db_collection:
             return crud_messages.get_messages_by_collection_id(db, collection_id=collection_id)
@@ -109,10 +106,10 @@ def get_messages(collection_id: uuid.UUID, user_id: Optional[uuid.UUID] = None, 
 
 
 @router.delete("/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_message(message_id: Tuple, user_id: Optional[uuid.UUID] = None, db: Session = Depends(get_db)):
+def delete_message(message_id: Tuple, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Delete a single message by ID"""
     # Only delete from PostgreSQL if user is authenticated
-    if user_id and is_user_authenticated(user_id, db):
+    if get_current_user():
         user_msg_del = crud_messages.delete_message(db, message_id=message_id[0])
         ai_msg_del = crud_messages.delete_message(db, message_id=message_id[1])
         if not user_msg_del or not ai_msg_del:
