@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Request
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -9,21 +10,12 @@ from ..db.session import get_db
 from ..db.crud import collections as crud_collections
 from ..db.crud import users as crud_users
 from ..db.models import User
-from ..core.security import get_current_user
+from ..core.security import get_current_user, oauth2_scheme
 from ..workflow import Workflow
 
 router = APIRouter(prefix="/collections", tags=["collections"])
 
 # Pydantic schemas
-class DocumentUpload(BaseModel):
-    id: uuid.UUID
-    title: str = 'Untitled chat'
-    name: str
-    collection_id: uuid.UUID
-    file: UploadFile = File(...)
-    current_user: User = Depends(get_current_user)
-    db: Session = Depends(get_db)
-    
 class CollectionUpdate(BaseModel):
     id: uuid.UUID
     name: str
@@ -33,7 +25,6 @@ class CollectionUpdate(BaseModel):
 
 class CollectionResponse(BaseModel):
     id: uuid.UUID
-    current_user: User = Depends(get_current_user)
     title: str = 'Untitled chat'
     name: str
     init_date: datetime
@@ -45,150 +36,169 @@ class CollectionResponse(BaseModel):
         from_attributes = True
 
 
-def create_collection(current_user: User = Depends(get_current_user), title: str = 'Untitled chat', db: Session = Depends(get_db)):
-    """Create a new collection"""
-    
-    # Always create collection in Weaviate
-    wf_response = Workflow.create_collection(
-        user_id = current_user.id
-    )
-    
-    # Only create in PostgreSQL if user is authenticated
-    if get_current_user():
-        # Verify user exists
-        db_user = crud_users.get_user_by_id(db, user_id = current_user.id)
-        if not db_user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-        
-        db_collection = crud_collections.create_collection(
-            db=db,
-            id = wf_response['id'],
-            user_id = current_user.id,
-            title=title,
-            name = wf_response['name']
-        )
-        return db_collection
-    else:
-        # Return Weaviate collection info for non-authenticated users
-        return {
-            "id": wf_response['id'],
-            "title": title,
-            'name': wf_response['name'],
-            "doc_count": 0,
-            "archived": False
-        }
+def create_collection_in_weaviate(user_id: Optional[uuid.UUID] = None, title: str = 'Untitled chat'):
+    """Helper: always create collection in Weaviate and return the weaviate response dict.
+    This does NOT create a Postgres record. Postgres creation is performed during the first successful upload
+    when the user is authenticated.
+    """
+    wf_response = Workflow.create_collection(user_id=user_id)
+    return wf_response
 
-@router.get("/{collection_id}")
+
+@router.get("/{collection_id}", response_model=CollectionResponse)
 def get_collection(collection_id: uuid.UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Get collection details"""
-    
-    if not get_current_user():
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not authenticated"
-        )
+    """Get collection details. Requires authentication and ownership."""
     db_collection = crud_collections.get_collection_by_id(db, collection_id=collection_id)
-    if db_collection:
-        return db_collection
-    
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Collection not found"
-    )
+    if not db_collection:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+
+    # Ensure current user owns the collection
+    if getattr(db_collection, 'user_id', None) != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this collection")
+
+    return db_collection
 
 @router.get("/users/{user_id}/collections/", response_model=List[CollectionResponse])
-def get_user_collections(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """List collections for a user"""
-    if not get_current_user():
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not authenticated"
-        )
-    # Verify user exists
-    db_user = crud_users.get_user_by_id(db, user_id = current_user.id)
+def get_user_collections(user_id: uuid.UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """List collections for a user. Authenticated; only owner may list their collections."""
+    # Ensure caller is requesting their own collections
+    if str(user_id) != str(current_user.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view these collections")
+
+    db_user = crud_users.get_user_by_id(db, user_id=current_user.id)
     if not db_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    return crud_collections.get_collections_by_user_id(db, user_id = current_user.id)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    return crud_collections.get_collections_by_user_id(db, user_id=current_user.id)
 
 
 @router.patch("/{collection_id}")
 def update_collection(
-    collection_update: CollectionUpdate, 
-    db: Session = Depends(get_db)
+    collection_id: uuid.UUID,
+    collection_update: CollectionUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    """Update collection metadata"""
-    # Only update PostgreSQL if collection exists there
+    """Update collection metadata. Requires authentication and ownership."""
+    # Validate path/body match
+    if str(collection_update.id) != str(collection_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Path collection_id and body id must match")
+
+    db_collection = crud_collections.get_collection_by_id(db, collection_id=collection_id)
+    if not db_collection:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+
+    # Ownership check
+    if getattr(db_collection, 'user_id', None) != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to update this collection")
+
     updated_collection = crud_collections.update_collection(
-            db=db,
-            collection_id=collection_update.id,
-            name=collection_update.name,
-            archived=collection_update.archived,
-            doc_count=collection_update.doc_count
-        )
+        db=db,
+        collection_id=collection_id,
+        name=collection_update.name,
+        archived=collection_update.archived,
+        doc_count=collection_update.doc_count,
+    )
     if updated_collection:
         return updated_collection
-    return {"status": "ERROR", "detail": "Collection not found in PostgreSQL"}
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update collection")
 
 
 @router.post("/{collection_id}/upload")
-def upload_documents(new_upload: DocumentUpload):
-    """Upload documents to a collection"""
-    id = new_upload.id
-    coll_name = new_upload.name
-    if new_upload.id == None:
-        createcoll_response = create_collection(new_upload.user_id, new_upload.title)
-        id = createcoll_response['id']
-        coll_name = createcoll_response['name']
-        
-    # Upload to Weaviate
-    upload_response = Workflow.process_document(new_upload.name, new_upload.file)
-    if upload_response['status'] != "ERROR":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=upload_response['detail']
-        )
-    
-    # Update PostgreSQL if user is authenticated
-    if get_current_user():
-        db_collection = crud_collections.get_collection_by_id(Depends(get_db), collection_id=new_upload.id)
-        if db_collection:
-            # Update document count
-            update_response=crud_collections.update_collection(
-                db=Depends(get_db),
-                id=createcoll_response['id'],
-                title=createcoll_response['title'],
-                name=createcoll_response['name'],
-                doc_count = upload_response.get("doc_count", 0) + db_collection.doc_count,
-                archived=new_upload.archived
+def upload_documents(
+    collection_id: Optional[uuid.UUID] = None,
+    file: UploadFile = File(...),
+    title: str = Form('Untitled chat'),
+    name: Optional[str] = Form(None),
+    request: Request = None,
+    token: Optional[str] = Depends(oauth2_scheme),
+    current_user: Optional[User] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Upload a file. If the target collection does not exist, create a Weaviate collection.
+    Only create a Postgres collection if the user is authenticated. Guest users create Weaviate-only collections which are not saved to Postgres.
+    """
+
+    # If collection_id provided, try to get Postgres collection
+    db_collection = None
+    if collection_id:
+        db_collection = crud_collections.get_collection_by_id(db, collection_id=collection_id)
+
+    # If no collection (guest or new), create Weaviate collection
+    if not db_collection:
+        # Create in Weaviate (user_id if authenticated else None)
+        user_id_for_weaviate = current_user.id if current_user else None
+        wf_resp = create_collection_in_weaviate(user_id=user_id_for_weaviate, title=title)
+        weav_id = wf_resp.get('id')
+        weav_name = wf_resp.get('name')
+
+        # If authenticated, create Postgres record now (on first document upload)
+        if current_user:
+            db_collection = crud_collections.create_collection(
+                db=db,
+                id=weav_id,
+                user_id=current_user.id,
+                title=title,
+                name=weav_name,
             )
+            collection_id = db_collection.id
+            name = db_collection.name
+        else:
+            # Guest: return weaviate-only id/name and continue
+            collection_id = weav_id
+            name = weav_name
+
+    # Upload document to Weaviate
+    upload_response = Workflow.process_document(name, file)
+    if upload_response.get('status') == "ERROR":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=upload_response.get('detail', 'Upload error'))
+
+    # If authenticated and db_collection exists, update Postgres doc count
+    if current_user and db_collection:
+        new_doc_count = upload_response.get('doc_count', 0) + getattr(db_collection, 'doc_count', 0)
+        crud_collections.update_collection(
+            db=db,
+            collection_id=collection_id,
+            name=name,
+            archived=getattr(db_collection, 'archived', False),
+            doc_count=new_doc_count,
+        )
+    else:
+        new_doc_count = upload_response.get('doc_count', 0)
 
     return {
-        "id": id,
-        'title': new_upload.title,
-        'name': coll_name,
-        "doc_count": upload_response['doc_count'],
-        'last_updated': upload_response['last_updated']
+        "id": str(collection_id),
+        "title": title,
+        'name': name,
+        "doc_count": new_doc_count,
+        'last_updated': upload_response.get('last_updated')
     }
 
 @router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_collection(collection_id: uuid.UUID, collection_name: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Delete collection (cascade deletes messages)"""
+def delete_collection(collection_id: uuid.UUID, collection_name: str, token: Optional[str] = Depends(oauth2_scheme),
+                      current_user: Optional[User] = Depends(get_current_user),
+                      db: Session = Depends(get_db)):
+    """Delete collection. If the collection is Postgres-backed, require authentication and ownership.
+    If it's a Weaviate-only (guest) collection, allow deletion without authentication.
+    """
 
-    # Delete from Weaviate
+    # Delete from Weaviate first
     wf_response = Workflow.delete_collection(collection_name)
-    
-    # Delete from PostgreSQL
-    if get_current_user():
+
+    # Check Postgres
+    db_collection = crud_collections.get_collection_by_id(db, collection_id=collection_id)
+    if db_collection:
+        # Must be authenticated and owner
+        if not current_user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required to delete this collection")
+        if getattr(db_collection, 'user_id', None) != current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete this collection")
         pg_success = crud_collections.delete_collection(db, collection_id=collection_id)
-        return {"status": "SUCCESS", "detail": "Collection deleted."}
-    
-    # Consider successful if deleted from either database
+    else:
+        # No Postgres record: guest/temporary collection — deletion of Weaviate is sufficient
+        pg_success = False
+
     if not pg_success and not wf_response:
-        return {"status": "ERROR", "detail": "Collection not found in either database!"}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found in either database")
+
+    return None

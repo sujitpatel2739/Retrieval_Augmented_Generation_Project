@@ -1,16 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
-from typing import Optional, Tuple
+from typing import Optional
 import uuid
 from datetime import datetime
 
 from ..db.session import get_db
 from ..db.crud import messages as crud_messages
 from ..db.crud import collections as crud_collections
-from ..db.crud import users as crud_users
 from ..db.models import User
-from ..core.security import get_current_user
+from ..core.security import get_current_user, decode_access_token, oauth2_scheme
 from ..workflow import Workflow
 
 router = APIRouter(prefix="/query", tags=["query"])
@@ -28,34 +28,37 @@ class Query(BaseModel):
 
 
 @router.post("/")
-def create_message(new_query: Query, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Add a query to a collection and get AI response"""
+def create_message(
+    new_query: Query,
+    token: Optional[str] = Depends(oauth2_scheme),
+    current_user: Optional[User] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Add a query to a collection and get AI response. Only persist to Postgres when authenticated."""
     # Get AI response from Weaviate
     rag_response = Workflow.get_rag_response(
         query=new_query.query,
         collection_name=new_query.collection_name,
-        top_k=new_query.top_k
+        top_k=new_query.top_k,
     )
-    
-    # Store user query in PostgreSQL if authenticated
-    if get_current_user():
-        # Verify collection exists in PostgreSQL
+
+    # If authenticated, store messages in Postgres
+    if current_user:
+        # Verify collection exists in PostgreSQL and belongs to user
         db_collection = crud_collections.get_collection_by_id(db, collection_id=new_query.collection_id)
         if not db_collection:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Collection not found"
-            )
-        
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+        if getattr(db_collection, 'user_id', None) != current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to add messages to this collection")
+
         # Store user query
         user_msg = crud_messages.create_message(
             db=db,
             collection_id=new_query.collection_id,
-            sender= new_query.sender,
             sender=new_query.sender,
             message=new_query.query,
         )
-        
+
         # Store AI response
         ai_msg = crud_messages.create_message(
             db=db,
@@ -65,62 +68,70 @@ def create_message(new_query: Query, current_user: User = Depends(get_current_us
             confidence_score=rag_response.get("confidence_score", 0.49),
             keywords=rag_response.get("keywords", []),
         )
-        
-        return {
-            "user_message": user_msg,
-            "assistant_message": ai_msg,
-        }
-    else:
-        # Return only Weaviate response for non-authenticated users
-        return {
-            "user_message": {
-                'id': str(uuid.uuid4()),
-                "collection_id": new_query.collection_id,
-                'collection_name': new_query.collection_name,
-                "query": new_query.query,
-            },
-            "assistant_message": {
-                'id': str(uuid.uuid4()),
-                "collection_id": new_query.collection_id,
-                'collection_name': new_query.collection_name,
-                'message': rag_response.get("answer", "Error generating response!"),
-                "confidence_score": rag_response.get("confidence_score", 0.49),
-                "keywords": rag_response.get("keywords", []),
-            }
-        }
+
+        return {"user_message": user_msg, "assistant_message": ai_msg}
+
+    # Guest: return only generated response (not persisted)
+    return {
+        "user_message": {
+            "id": str(uuid.uuid4()),
+            "collection_id": new_query.collection_id,
+            "collection_name": new_query.collection_name,
+            "query": new_query.query,
+        },
+        "assistant_message": {
+            "id": str(uuid.uuid4()),
+            "collection_id": new_query.collection_id,
+            "collection_name": new_query.collection_name,
+            "message": rag_response.get("answer", "Error generating response!"),
+            "confidence_score": rag_response.get("confidence_score", 0.49),
+            "keywords": rag_response.get("keywords", []),
+        },
+    }
         
 
 @router.get("/{collection_id}/")
-def get_messages(collection_id: uuid.UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """List all messages in a collection"""
-    # Try PostgreSQL first if user is authenticated
-    if get_current_user():
-        db_collection = crud_collections.get_collection_by_id(db, collection_id=collection_id)
-        if db_collection:
-            return crud_messages.get_messages_by_collection_id(db, collection_id=collection_id)
+def get_messages(
+    collection_id: uuid.UUID,
+    token: Optional[str] = Depends(oauth2_scheme),
+    current_user: Optional[User] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List all messages in a collection. Only available from Postgres for authenticated users."""
+    if not current_user:
+        # Guest users do not have messages in Postgres
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required to list messages")
+
+    db_collection = crud_collections.get_collection_by_id(db, collection_id=collection_id)
+    if not db_collection:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+    if getattr(db_collection, 'user_id', None) != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view messages for this collection")
+
+    return crud_messages.get_messages_by_collection_id(db, collection_id=collection_id)
+
+
+@router.delete("/{user_message_id}/{assistant_message_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_message(
+    user_message_id: uuid.UUID,
+    assistant_message_id: uuid.UUID,
+    collection_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete a pair of messages (user + assistant). Requires authentication and ownership."""
+    # Verify authentication provided by dependency
+    # Attempt to delete both messages
+    user_msg = crud_messages.get_message_by_id(db, message_id=user_message_id)
+    if str(collection_id) != str(user_msg.collection_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Message does not belong to the specified collection")
+    user_msg_del = crud_messages.delete_message(db, message_id=user_message_id)
     
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Collection not found or no messages available"
-    )
-
-
-@router.delete("/{message_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_message(message_id: Tuple, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Delete a single message by ID"""
-    # Only delete from PostgreSQL if user is authenticated
-    if get_current_user():
-        user_msg_del = crud_messages.delete_message(db, message_id=message_id[0])
-        ai_msg_del = crud_messages.delete_message(db, message_id=message_id[1])
-        if not user_msg_del or not ai_msg_del:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Complete message pair not found!"
-            )
-    else:
-        # For non-authenticated users, we can't delete individual messages
-        # as Weaviate handles collections, not individual messages
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Authentication required to delete messages"
-        )
+    ai_msg = crud_messages.get_message_by_id(db, message_id=assistant_message_id)
+    if str(collection_id) != str(ai_msg.collection_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Message does not belong to the specified collection")
+    ai_msg_del = crud_messages.delete_message(db, message_id=assistant_message_id)
+    
+    if not user_msg_del or not ai_msg_del:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Complete message pair not found!")
+    return None

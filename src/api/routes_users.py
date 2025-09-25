@@ -8,7 +8,8 @@ from datetime import timedelta
 from ..db.session import get_db
 from ..db.crud import users as crud_users
 from ..db.models import User
-from ..core.security import create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, get_current_user
+from ..core.security import create_access_token, get_current_user
+from ..config import settings
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -41,7 +42,7 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
     """Register a new user"""
     db_user = crud_users.get_user_by_email(db, email=user.email)
     if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
     
     return crud_users.create_user(db=db, name=user.name, email=user.email, password=user.password)
 
@@ -51,9 +52,9 @@ def login_user(user: UserLogin, db: Session = Depends(get_db)):
     """Login user and return JWT token"""
     db_user = crud_users.authenticate_user(db, email=user.email, password=user.password)
     if not db_user:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": str(db_user.id)}, expires_delta=access_token_expires
     )
