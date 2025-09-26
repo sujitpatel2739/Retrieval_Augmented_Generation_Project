@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
-from src.db.models import User
-from src.core.security import hash_password, verify_password
+from ..models import User
+from ...core.security import hash_password, verify_password
 import uuid
 
 def create_user(db: Session, name: str, email: str, password: str) -> User:

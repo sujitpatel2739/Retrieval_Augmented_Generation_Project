@@ -6,16 +6,16 @@ import uuid
 def create_message(
     db: Session,
     collection_id: uuid.UUID,
-    sender: str,
-    message: str,
+    role: str,
+    content: str,
     confidence_score: Optional[float] = None,
     keywords: Optional[List[str]] = None,
 ) -> Message:
     """Create a new message"""
     db_message = Message(
         collection_id=collection_id,
-        sender=sender,
-        message=message,
+        role=role,
+        content=content,
         confidence_score=confidence_score,
         keywords=keywords,
     )

@@ -14,5 +14,5 @@ class SearchResult:
 
 @dataclass
 class RAGResponse:
-    answer: str
+    content: str
     confidence_score: float

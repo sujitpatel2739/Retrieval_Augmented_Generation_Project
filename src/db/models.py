@@ -27,7 +27,7 @@ class Collection(Base):
     init_date = Column(DateTime(timezone=True), server_default=func.now())
     last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     doc_count = Column(Integer, default=0)
-    archived = Column(Boolean, default=True)
+    archived = Column(Boolean, default=False)
     
     # Relationships
     user = relationship("User", back_populates="collections")
@@ -39,7 +39,7 @@ class Message(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     collection_id = Column(UUID(as_uuid=True), ForeignKey("collections.id", ondelete="CASCADE"), nullable=False)
     role = Column(Text, nullable=False)
-    message = Column(Text, nullable=False)
+    content = Column(Text, nullable=False)
     confidence_score = Column(Float, nullable=True)  # Only for assistant messages
     keywords = Column(ARRAY(Text), nullable=True)  # Only for assistant messages
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -79,16 +79,9 @@ class Workflow(BaseWorkflow):
         VecOperator.create_collection(user_id)
     
     @classmethod
-    def process_document(cls, collection_name: str, file: Any, max_token_len: int = 256, min_token_len: int = 4) -> Dict:
+    def process_document(cls, collection_name: str, file: Any, extension: str, max_token_len: int = 256, min_token_len: int = 8) -> Dict:
         """Process and store document chunks in vector DB."""
         print("[Workflow] process_document called")
-        
-        filename = file.filename
-        extension = os.path.splitext(filename)[1].lower()
-
-        if extension not in [".pdf", ".docx", ".txt", ".html", ".htm"]:
-            return {"status": "ERROR", "status_code": 400, "detail": f"Unsupported file type: {extension}"}
-
         try:
             file_bytes = file.read()
         except Exception as e:

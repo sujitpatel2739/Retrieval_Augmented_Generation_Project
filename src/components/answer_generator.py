@@ -90,8 +90,7 @@ class LLMAnswerGenerator(BaseAnswerGenerator):
             except (json.JSONDecodeError, ValidationError):
                 # === Final Fallback ===
                 return RAGResponse(
-                    answer="Unable to generate a valid structured response.",
-                    confidence_score=0.0,
-                    keywords=[],
+                    content="Unable to generate a valid structured response.",
+                    confidence_score=0.0
                 )
         
