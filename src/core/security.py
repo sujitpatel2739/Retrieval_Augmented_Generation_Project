@@ -8,6 +8,7 @@ from passlib.context import CryptContext
 from db.session import get_db
 from db.crud import users
 from config import settings
+import logging
 import os
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -35,9 +36,9 @@ def decode_access_token(token: str):
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload
-    except JWTError:
-        print("Invalid token or token has expired")
-        return None
+    except JWTError as e:
+        logging.warning(f"JWT decode error: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
 
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):

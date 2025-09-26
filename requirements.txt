@@ -2,10 +2,44 @@ fastapi
 uvicorn
 pydantic
 pydantic-settings
-openai
-sentence_transformers
+# Core framework
+fastapi>=0.95.0
+uvicorn[standard]>=0.22.0
+
+# Data validation / settings
+pydantic>=2.0
+pydantic-settings>=1.0
+
+# Authentication / security
+python-jose>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# Database
+SQLAlchemy>=1.4
+psycopg2-binary>=2.9
+alembic>=1.10
+
+# Vector DB / embeddings / ML
 weaviate-client>=4.0.0
-numpy
-python-dotenv
-requests
-python-multipart
+torch>=2.1.0
+sentence-transformers>=2.2.2
+transformers>=4.40.0
+numpy>=1.24.0
+
+# OpenAI and HTTP
+openai>=0.27.0
+requests>=2.31.0
+
+# File uploads / forms
+python-multipart>=0.0.6
+
+# Utilities
+python-dotenv>=1.0.0
+typing_extensions>=4.5
+
+# Dev / test
+pytest>=7.4
+pytest-asyncio>=0.22
+
+# Optional but recommended
+tqdm>=4.65

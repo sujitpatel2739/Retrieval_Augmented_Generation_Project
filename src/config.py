@@ -3,13 +3,12 @@ from pydantic import Field
 
 class Settings(BaseSettings):
     # OpenRouter API settings
-    openai_api_key: str = Field(..., env = "OPENAI_API_KEY")
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    OPENAI_API_KEY: str = Field(..., env = "OPENAI_API_KEY")
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     
     # Weviate
-    weaviate_url: str = "http://localhost:8080"
-    weaviate_port: int = 8080
-    weaviate_primary_class: str = "temporary"
+    WEAVIATE_URL: str = "http://localhost:8080"
+    WEAVIATE_PORT: int = 8080
     
     # LLM Settings
     router_model: str = "deepseek/deepseek-chat-v3-0324:free"
@@ -21,6 +20,14 @@ class Settings(BaseSettings):
     # RAG Settings
     completion_threshold: float = 0.7
     
+    JWT_SECRET_KEY: str
+    ALGORITHM: str = 'HS256'
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # 1 hour
+    
+    DATABASE_URL:str = 'postgresql://JasonApex2739:@APEXJASONpg2739@localhost:5432/rag_main'
+    
     class Config:
         env_file = ".env"
         validate_assignment = True
+        
+settings = Settings()

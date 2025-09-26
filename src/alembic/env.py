@@ -26,8 +26,8 @@ target_metadata = Base.metadata
 
 def get_url():
     import os
-    from db.session import settings
-    return settings.database_url
+    from config import settings
+    return settings.DATABASE_URL
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.

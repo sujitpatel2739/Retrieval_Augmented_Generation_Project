@@ -1,32 +1,53 @@
+version: "3.9"
+
 services:
+  postgres:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: JasonApex2739
+      POSTGRES_PASSWORD: "@APEXJASONpg2739"
+      POSTGRES_DB: rag_main
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
   weaviate:
     image: semitechnologies/weaviate:latest
+    restart: always
     ports:
       - "8080:8080"
       - "50051:50051"
     environment:
-      - QUERY_DEFAULTS_LIMIT=25
-      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true
-      - PERSISTENCE_DATA_PATH=/var/lib/weaviate
-      - ENABLE_GRPC=true
-    
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      ENABLE_GRPC: "true"
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+
   api:
     build: .
+    restart: always
     ports:
       - "8000:8000"
     environment:
-      - WEAVIATE_URL=http://weaviate:8080
+      WEAVIATE_URL: http://weaviate:8080
+      DATABASE_URL: postgresql+psycopg2://rag_user:rag_password@postgres:5432/rag_db
     env_file:
       - .env
     volumes:
       - ./logs:/app/logs
     depends_on:
       - weaviate
+      - postgres
 
   viz:
     build: 
       context: .
       dockerfile: src/logger/viz/Dockerfile
+    restart: always
     ports:
       - "8501:8501"
     volumes:
@@ -35,4 +56,5 @@ services:
       - api
 
 volumes:
-  weaviate_data: 
+  weaviate_data:
+  postgres_data:
