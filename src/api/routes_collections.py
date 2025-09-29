@@ -10,7 +10,7 @@ from ..db.session import get_db
 from ..db.crud import collections as crud_collections
 from ..db.crud import users as crud_users
 from ..db.models import User
-from ..core.security import get_current_user, oauth2_scheme
+from ..core.security import get_current_user
 from ..workflow import Workflow
 
 router = APIRouter(prefix="/collections", tags=["collections"])
@@ -46,9 +46,10 @@ def create_collection_in_weaviate(user_id: Optional[uuid.UUID] = None, title: st
 
 
 @router.get("/{collection_id}", response_model=CollectionResponse)
-def get_collection(collection_id: uuid.UUID):
-    current_user: User = Depends(get_current_user)
-    db: Session = Depends(get_db)
+def get_collection(collection_id: uuid.UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not current_user or not db:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail= "Authentication required ")
+
     """Get collection details. Requires authentication and ownership."""
     db_collection = crud_collections.get_collection_by_id(db, id=collection_id)
     if not db_collection:
@@ -57,13 +58,16 @@ def get_collection(collection_id: uuid.UUID):
     # Ensure current user owns the collection
     if getattr(db_collection, 'user_id', None) != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this collection")
+    
+
 
     return db_collection
 
 @router.get("/users/{user_id}/collections/", response_model=List[CollectionResponse])
-def get_user_collections(user_id: uuid.UUID):
-    current_user: User = Depends(get_current_user)
-    db: Session = Depends(get_db)
+def get_user_collections(user_id: uuid.UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not current_user or not db:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail= "Authentication required ")
+
     """List collections for a user. Authenticated; only owner may list their collections."""
     # Ensure caller is requesting their own collections
     if str(user_id) != str(current_user.id):
@@ -80,10 +84,13 @@ def get_user_collections(user_id: uuid.UUID):
 def update_collection(
     collection_id: uuid.UUID,
     collection_update: CollectionUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Update collection metadata. Requires authentication and ownership."""
-    current_user: User = Depends(get_current_user)
-    db: Session = Depends(get_db)
+    if not current_user or not db:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail= "Authentication required ")
+
     # Validate path/body match
     if str(collection_update.id) != str(collection_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Path collection_id and body id must match")
@@ -114,8 +121,8 @@ def upload_documents(
     file: UploadFile = File(...),
     title: str = Form('Untitled chat'),
     collection_name: Optional[str] = Form(None),
-    request: Request = None,
-    token: Optional[str] = Depends(oauth2_scheme),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Upload a file. If the target collection does not exist, create a Weaviate collection.
     Only create a Postgres collection if the user is authenticated. Guest users create Weaviate-only collections which are not saved to Postgres.
@@ -123,25 +130,21 @@ def upload_documents(
     # Validating File Upload
     if not file:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No file uploaded")
-    if not name:
-        name = file.filename
     extension = file.filename.split('.')[-1].lower()
     if extension not in ['pdf', 'docx', 'txt', 'md', 'html', 'htm']:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported file type: {extension}")
-    if file.content_type not in ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'text/markdown', 'text/html']:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported file content type: {file.content_type}")
+    # if file.content_type not in ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'text/markdown', 'text/html']:
+    #     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported file content type: {file.content_type}")
     if file.spool_max_size and file.spool_max_size > 10 * 1024 * 1024:  # 10 MB limit
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File too large")
     
-    current_user: User = Depends(get_current_user)
-    db: Session = Depends(get_db)
+
     # If collection_id provided, try to get Postgres collection
     db_collection = None
     if collection_id:
         db_collection = crud_collections.get_collection_by_id(db, id=collection_id)
-
-    # If no collection (guest or new), create Weaviate collection
-    if not db_collection:
+    else:
+        # If no collection (guest or new), create Weaviate collection
         # Create in Weaviate (user_id if authenticated else None)
         user_id_for_weaviate = current_user.id if current_user else None
         wf_resp = create_collection_in_weaviate(user_id=user_id_for_weaviate, title=title)
@@ -160,6 +163,7 @@ def upload_documents(
 
     # Upload document to Weaviate
     upload_response = Workflow.process_document(collection_name, file, extension=extension)
+    
     if upload_response.get('status') == "ERROR":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=upload_response.get('detail', 'Upload error'))
 
@@ -177,29 +181,31 @@ def upload_documents(
         new_doc_count = upload_response.get('doc_count', 0)
 
     return {
-        "id": str(collection_id),
+        "id": str(db_collection.id) if db_collection else str(weav_id),
         "title": title,
-        'name': name,
+        'collection_name': db_collection.name if db_collection else weav_name,
         "doc_count": new_doc_count,
         'last_updated': upload_response.get('last_updated')
     }
 
 @router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_collection(collection_id: uuid.UUID, collection_name: str, token: Optional[str] = Depends(oauth2_scheme),):
+def delete_collection(collection_id: uuid.UUID, collection_name: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Delete collection. If the collection is Postgres-backed, require authentication and ownership.
     If it's a Weaviate-only (guest) collection, allow deletion without authentication.
     """
-    current_user: Optional[User] = Depends(get_current_user)
-    db: Session = Depends(get_db)
+
     # Delete from Weaviate first
     wf_response = Workflow.delete_collection(collection_name)
 
+    # Must be authenticated and owner
+    if str(collection_id).startswith("temp"):
+        return None
+    if not current_user or not db:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required to delete this collection")
+    
     # Check Postgres
     db_collection = crud_collections.get_collection_by_id(db, id=collection_id)
     if db_collection:
-        # Must be authenticated and owner
-        if not current_user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required to delete this collection")
         if getattr(db_collection, 'user_id', None) != current_user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete this collection")
         pg_success = crud_collections.delete_collection(db, id=collection_id)

@@ -10,7 +10,7 @@ from ..db.session import get_db
 from ..db.crud import messages as crud_messages
 from ..db.crud import collections as crud_collections
 from ..db.models import User
-from ..core.security import get_current_user, decode_access_token, oauth2_scheme
+from ..core.security import get_current_user
 from ..workflow import Workflow
 
 router = APIRouter(prefix="/query", tags=["query"])
@@ -29,8 +29,7 @@ class Query(BaseModel):
 
 @router.post("/")
 def create_message(
-    new_query: Query,
-    token: Optional[str] = Depends(oauth2_scheme),
+    new_query: Query
 ):
     """Add a query to a collection and get AI response. Only persist to Postgres when authenticated."""
     current_user: Optional[User] = Depends(get_current_user)
@@ -56,7 +55,7 @@ def create_message(
         user_msg = crud_messages.create_message(
             db=db,
             collection_id=new_query.collection_id,
-            role=new_query.sender,
+            role=new_query.role,
             content=new_query.query,
         )
 
@@ -93,8 +92,7 @@ def create_message(
 
 @router.get("/{collection_id}/")
 def get_messages(
-    collection_id: uuid.UUID,
-    token: Optional[str] = Depends(oauth2_scheme)
+    collection_id: uuid.UUID
 ):
     """List all messages in a collection. Only available from Postgres for authenticated users."""
     current_user: Optional[User] = Depends(get_current_user)

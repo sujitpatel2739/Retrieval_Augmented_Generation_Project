@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Any, Dict
+from typing import List, Any, Dict, Optional
 import weaviate
 import weaviate.classes as wvc
 from weaviate.classes.config import Property, DataType
@@ -46,17 +46,17 @@ class VecOperator(BaseVecOperator):
         print("Weaviate connected: ", self.client.is_ready())
         
     
-    def create_collection(self, user_id: str) -> Dict[str, Any]:
+    def create_collection(self, user_id: Optional[uuid.UUID]) -> Dict[str, Any]:
         """Create a new collection in Weaviate with specified schema."""
         if self.client.collections.exists(collection_name):
             return {"status": "ERROR", "detail": f"Collection {collection_name} already exists!"}
         
         collection_id = str(uuid.uuid4())
-        if not user_id:
+        if user_id:
+            collection_name = user_id[:12] + '_' + collection_id[:12]
+        else:
             collection_id = 'temp_' + str(uuid.uuid4())
             collection_name = collection_id
-        else:
-            collection_name = user_id[:12] + '_' + collection_id[:12]
         
         new_collection = self.client.collections.create(
             name=collection_name,

@@ -20,11 +20,11 @@ class Settings(BaseSettings):
     # RAG Settings
     completion_threshold: float = 0.7
     
-    JWT_SECRET_KEY: str
+    SECRET_KEY: str = Field(..., env = "SECRET_KEY")
     ALGORITHM: str = 'HS256'
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # 1 hour
     
-    DATABASE_URL:str = 'postgresql://JasonApex2739:@APEXJASONpg2739@localhost:5432/rag_main'
+    DATABASE_URL:str = Field(..., env = "DATABASE_URL")
     
     class Config:
         env_file = ".env"

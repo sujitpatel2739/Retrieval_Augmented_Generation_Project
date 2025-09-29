@@ -75,7 +75,7 @@ class Workflow(BaseWorkflow):
         return response
 
     @classmethod
-    def create_collection(title: str, user_id: Any):
+    def create_collection(title: str, user_id: Optional[uuid.UUID]) -> None:
         VecOperator.create_collection(user_id)
     
     @classmethod
