@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import uvicorn
 from datetime import datetime
-from .config import Settings
+from src.config import Settings
 from .logger.json_logger import JsonLogger
 from .workflow import Workflow
 import os
@@ -19,17 +19,11 @@ from dotenv import load_dotenv
 
 
 # Load environment variables from .env
-load_dotenv('.env')
+load_dotenv('.env') 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Load settings
 settings = Settings()
-
-app = FastAPI(title="FastAPI Backend",
-              lifespan=lifespan,
-              version="1.0.0"
-              )
-app.mount("/static", StaticFiles(directory="src/static"), name="static")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -43,6 +37,12 @@ async def lifespan(app: FastAPI):
     # ---- SHUTDOWN ----
     Workflow.shutdown()
     print("[LIFESPAN] Workflow shut down")
+
+app = FastAPI(title="FastAPI Backend",
+              lifespan=lifespan,
+              version="1.0.0"
+              )
+app.mount("/static", StaticFiles(directory="src/static"), name="static")
 
 # Add CORS middleware
 app.add_middleware(
