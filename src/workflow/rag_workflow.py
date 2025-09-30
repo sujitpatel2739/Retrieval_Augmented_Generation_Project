@@ -1,10 +1,10 @@
 from typing import Optional, Tuple, List, Dict, Any
-from ..models import RAGResponse, QueryIntent
+from ..models import RAGResponse
 from ..components import (
     UniversalExtractor,
     NoiseRemover,
     SmartAdaptiveChunker,
-    LLMRequestRouter,
+    # LLMRequestRouter,
     LLMQueryReformulator,
     VecOperator,
     LLMAnswerGenerator
@@ -24,7 +24,7 @@ class Workflow(BaseWorkflow):
     extractor = None
     noise_remover = None
     chunker = None
-    router = None
+    # router = None
     reformulator = None
     vec_operator = None
     answer_generator = None
@@ -43,7 +43,7 @@ class Workflow(BaseWorkflow):
         cls.extractor = UniversalExtractor()
         cls.noise_remover = NoiseRemover()
         cls.chunker = SmartAdaptiveChunker(tokenizer_model_name, similarity_threshold)
-        cls.router = LLMRequestRouter(model=settings.router_model, api_key=OPENAI_API_KEY)
+        # cls.router = LLMRequestRouter(model=settings.router_model, api_key=OPENAI_API_KEY)
         cls.reformulator = LLMQueryReformulator(model=settings.reformulator_model, api_key=OPENAI_API_KEY)
         cls.vec_operator = VecOperator(embedding_model_name="all-MiniLM-L6-v2"
         )

@@ -3,7 +3,7 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
-from .session import Base
+from src.db.session import Base
 
 class User(Base):
     __tablename__ = "users"

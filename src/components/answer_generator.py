@@ -24,7 +24,7 @@ class BaseAnswerGenerator(BaseComponent):
 class LLMAnswerGenerator(BaseAnswerGenerator): 
     def __init__(self, model: str = "deepseek/deepseek-chat-v3-0324:free", api_key: str = None):
         super().__init__()
-        self.client = OpenAI(base_url = Settings().openrouter_base_url, api_key=api_key)
+        self.client = OpenAI(base_url = Settings().OPENROUTER_BASE_URL, api_key=api_key)
         self.model = model
     
     def generate_answer(self, query: str, context: str) -> RAGResponse:

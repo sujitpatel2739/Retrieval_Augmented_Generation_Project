@@ -16,3 +16,8 @@ class SearchResult:
 class RAGResponse:
     content: str
     confidence_score: float
+    
+@dataclass
+class QueryStatus:
+    status: str
+    detail: str = None

@@ -6,12 +6,12 @@ from typing import Optional, List, Dict, Any
 import uuid
 from datetime import datetime
 
-from ..db.session import get_db
-from ..db.crud import collections as crud_collections
-from ..db.crud import users as crud_users
-from ..db.models import User
-from ..core.security import get_current_user
-from ..workflow import Workflow
+from src.db.session import get_db
+from src.db.crud import collections as crud_collections
+from src.db.crud import users as crud_users
+from src.db.models import User
+from src.core.security import get_current_user
+from src.workflow import Workflow
 
 router = APIRouter(prefix="/collections", tags=["collections"])
 

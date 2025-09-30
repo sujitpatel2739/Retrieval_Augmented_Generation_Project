@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # 1 hour
     
     DATABASE_URL:str = Field(..., env = "DATABASE_URL")
+    DATABASE_HOST: str = 'localhost'
+    DATABASE_PORT: str = '5432'
+    DATABASE_USER: str = Field(..., env = "DATABASE_USER")
+    DATABASE_PASSWORD: str = Field(..., env = "DATABASE_PASSWORD")
+    DATABASE_NAME: str = 'rag_db'
     
     class Config:
         env_file = ".env"

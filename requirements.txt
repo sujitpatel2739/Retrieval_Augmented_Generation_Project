@@ -43,3 +43,9 @@ pytest-asyncio>=0.22
 
 # Optional but recommended
 tqdm>=4.65
+
+# Word (.docx) support
+python-docx>=0.8.11
+
+# Caching utilities
+cachetools>=5.3

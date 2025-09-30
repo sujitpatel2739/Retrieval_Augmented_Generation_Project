@@ -29,7 +29,7 @@ settings = Settings()
 async def lifespan(app: FastAPI):
     # Initialize workflow
     Workflow.init(
-        OPENAI_API_KEY=settings.openai_api_key,
+        OPENAI_API_KEY=settings.OPENAI_API_KEY,
         completion_threshold=0.7
     )
     print("[LIFESPAN] Workflow initialized")

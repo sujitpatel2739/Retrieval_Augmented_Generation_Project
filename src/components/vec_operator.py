@@ -12,6 +12,8 @@ from datetime import datetime
 import os
 import json
 import uuid
+from cachetools import TTLCache
+from threading import Lock
 
 import logging
 logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
@@ -22,12 +24,12 @@ class BaseVecOperator(BaseComponent):
     def __init__(self):
         super().__init__(name="retriever")
 
-    def _execute(self, query: str, top_k: int = 10) -> List[SearchResult]:
+    def _execute(self, query: str, top_k: int, collection_name: str) -> List[SearchResult]:
         """Execute retrieval"""
-        return self.retrieve(query, top_k = top_k)
+        return self.retrieve(query, top_k, collection_name)
 
     @abstractmethod
-    def retrieve(self, query: str, top_k: int = 10) -> List[SearchResult]:
+    def retrieve(self, query: str, top_k: int, collection_name: str) -> List[SearchResult]:
         """Retrieve relevant context based on query""" 
         pass
     
@@ -40,10 +42,14 @@ class VecOperator(BaseVecOperator):
         super().__init__()
 
         settings = Settings()
-        self.client = weaviate.connect_to_local(port=settings.weaviate_port, skip_init_checks=True)
+        # connect to Weaviate
+        self.client = weaviate.connect_to_local(port=settings.WEAVIATE_PORT, skip_init_checks=True)
         self.embedder = SentenceTransformer(embedding_model_name)
-        
-        print("Weaviate connected: ", self.client.is_ready())
+        # small in-process TTL cache for collection wrappers returned by the client
+        self._collections_cache = TTLCache(maxsize=256, ttl=300)
+        self._cache_lock = Lock()
+
+        logging.info("Weaviate connected: %s", self.client.is_ready())
         
     
     def create_collection(self, user_id: Optional[uuid.UUID]) -> Dict[str, Any]:
@@ -63,45 +69,40 @@ class VecOperator(BaseVecOperator):
             properties=[
                 Property(name="text", data_type=DataType.TEXT),
                 Property(name="metadata", data_type=DataType.OBJECT,
-                nested_properties=[
-                    Property(name="chunk_id", data_type=DataType.TEXT),
-                    Property(name="token_len", data_type=DataType.INT),
-                    ]),
+                         nested_properties=[
+                             Property(name="chunk_id", data_type=DataType.TEXT),
+                             Property(name="token_len", data_type=DataType.INT),
+                         ]),
             ],
         )
 
-        return {"status": "SUCCESS", "name": collection_name, "id": collection_id}
+        # cache the new collection wrapper so subsequent queries are fast
+        try:
+            self.get_or_cache_collection(collection_name)
+            return new_collection
+        except Exception:
+            # if fetching fails, ignore caching — operations will refetch on demand
+            logging.exception("Failed to cache new collection %s", collection_name)
+
         
          
-    def change_collection(self, curr_collection_name: str, collection_name: str, collection_id: str, user_id: str) -> None:
-        """Switch to an existing collection in Weaviate."""
-        if user_id[:6] =='guest_':
-                self.delete_collection(curr_collection_name, collection_id, user_id)
-        if self.client.collections.exists(collection_name):
-            self.collections_cache[user_id][collection_id] = self.client.collections.get(collection_name)
-            return 
-        else:
-            raise ValueError(f"Collection {collection_name} does not exist.")
-        
-        
-    def get_collections(self, collection_name) -> Dict[str, Any]:
-        """Retrieve all collections from Weaviate."""
+    def change_collection(self, collection_name: str):
+        """Return collection wrapper for an existing collection (cached).
+
+        Raises ValueError if collection doesn't exist.
+        """
         if not self.client.is_ready():
-            return {'status': 'INTERNAL_ERROR', 'detail': 'Weaviate client is not ready!'}
+            raise RuntimeError("Weaviate client is not ready")
         
-        collections = self.client.collections.get(collection_name)
-        if not collections:
-            return {'status': 'ERROR', 'detail': 'No collections found! Please create a new collection.'}
-        
-        return collections
+        return self.get_or_cache_collection(collection_name) 
         
         
-    def delete_collection(self, collection_name: str) -> None:
-        
-        """Delete a collection in Weaviate."""
-        
+    def delete_collection(self, collection_name: str) -> Dict[str, Any]:
+        """Delete a collection in Weaviate and invalidate cache."""
         if self.client.collections.exists(collection_name):
             self.client.collections.delete(collection_name)
+            # invalidate cache
+            self.invalidate_collection_cache(collection_name)
             return {"status": "SUCCESS", "detail": f"Collection {collection_name} deleted."}
         else:
             return {"status": "ERROR", "detail": f"Collection {collection_name} does not exist."}
@@ -115,8 +116,8 @@ class VecOperator(BaseVecOperator):
         self.client.close()
         
         
-    def retrieve(self, query: str, top_k: int = 10) -> List[SearchResult]:
-        semantic_results = self.semantic_search(query, top_k=top_k)
+    def retrieve(self, query: str, top_k: int, collection_name: str) -> List[SearchResult]:
+        semantic_results = self.semantic_search(query, top_k=top_k, collection_name=collection_name)
         # return self.rerank(semantic_results)
         return semantic_results
 
@@ -131,23 +132,33 @@ class VecOperator(BaseVecOperator):
                           'metadata': doc.metadata},
             vector = embedding.detach().cpu().numpy().tolist()
             ))
-        collection = self.client.collections.get(collection_name)
-        if not collection:
-            return {"status": "ERROR", "detail": f"Collection {collection_name} does not exist!"}
-        self.client.insert_many(objects)
+        # ensure collection exists and use cached wrapper
+        try:
+            collection = self.get_or_cache_collection(collection_name)
+        except Exception:
+            if not self.client.collections.exists(collection_name):
+                return {"status": "ERROR", "detail": f"Collection {collection_name} does not exist!"}
+        
+        # Collection-level insert
+        try:
+            collection.insert_many(objects)
+        except Exception as e:
+            logging.exception(f"Failed to insert objects into collection %s {collection_name}; error: %s: {str(e)}")
+            return {"status": "ERROR", "detail": "Insert failed"}
         
         return {"status": "SUCCESS", 'doc_count': len(documents), "last_updated": datetime.now().isoformat()}
         
 
-    def semantic_search(self, query: str, top_k: int, collection_id: str, user_id: str) -> List[SearchResult]:
+    def semantic_search(self, query: str, top_k: int, collection_name: str) -> List[SearchResult]:
         """Perform semantic search using Weaviate."""
         query_vector = self.embedder.encode(query, normalize_embeddings=True, convert_to_tensor=True)
         query_vector = query_vector.detach().cpu().numpy().tolist()
 
-        response = self.collections_cache[user_id][collection_id].query.near_vector(
+        collection = self.get_or_cache_collection(collection_name)
+        response = collection.query.near_vector(
             near_vector=query_vector,
             limit=top_k,
-            return_metadata = wvc.query.MetadataQuery(distance=True)
+            return_metadata=wvc.query.MetadataQuery(distance=True)
         )
 
         results = response.objects
@@ -161,7 +172,7 @@ class VecOperator(BaseVecOperator):
         ]
         
 
-    def keyword_search(self, keywords: List[str], top_k: int, user_id: str, collection_id: str) -> List[SearchResult]:
+    def keyword_search(self, keywords: List[str], top_k: int, user_id: str, collection_name: str) -> List[SearchResult]:
         if not keywords:
             return []
     
@@ -177,8 +188,10 @@ class VecOperator(BaseVecOperator):
             ]
         }
     
+        # get cached collection wrapper by collection_id (collection name string expected)
+        collection = self.get_or_cache_collection(collection_name)
         response = (
-            self.collections_cache[user_id][collection_id].query
+            collection.query
             .where(where_filter)
             .with_limit(top_k)
             .fetch()
@@ -212,4 +225,26 @@ class VecOperator(BaseVecOperator):
             merged[result.text] = result
 
         return sorted(merged.values(), key=lambda x: x.score, reverse=True)
+    
+    # ----------------------------------------------------------------
+    # Cache helpers
+    # ----------------------------------------------------------------
+    def get_or_cache_collection(self, collection_name: str):
+        """Return a cached collection wrapper or fetch and cache it."""
+        # fetch and cache
+        if self.client.collections.exists(collection_name):
+            with self._cache_lock:
+                cached = self._collections_cache.get(collection_name)
+                if cached is not None:
+                    return cached
+                coll = self.client.get(collection_name)
+                self._collections_cache[collection_name] = coll
+                return coll
+            
+        raise ValueError(f"Collection {collection_name} does not exist.")
+
+
+    def invalidate_collection_cache(self, collection_name: str):
+        with self._cache_lock:
+            self._collections_cache.pop(collection_name, None)
     

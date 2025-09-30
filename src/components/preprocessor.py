@@ -3,7 +3,6 @@ import re
 import torch
 import fitz
 import io
-from docx import Document as DocxDocument
 from bs4 import BeautifulSoup
 from ..models import Document
 import docx

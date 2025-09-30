@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from ..db.session import get_db
 from ..db.crud import users
-from config import settings
+from src.config import settings
 import logging
 import os
 

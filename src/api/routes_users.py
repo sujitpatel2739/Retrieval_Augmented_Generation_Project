@@ -5,11 +5,11 @@ from typing import Optional
 import uuid
 from datetime import datetime
 from datetime import timedelta
-from ..db.session import get_db
-from ..db.crud import users as crud_users
-from ..db.models import User
-from ..core.security import create_access_token, get_current_user
-from ..config import settings
+from src.db.session import get_db
+from src.db.crud import users as crud_users
+from src.db.models import User
+from src.core.security import create_access_token, get_current_user
+from src.config import settings
 
 router = APIRouter(prefix="/users", tags=["users"])
 
