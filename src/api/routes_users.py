@@ -31,7 +31,6 @@ class UserResponse(BaseModel):
     id: uuid.UUID
     name: str
     email: str
-    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -58,4 +57,4 @@ def login_user(user: UserLogin, db: Session = Depends(get_db)):
     access_token = create_access_token(
         data={"sub": str(db_user.id)}, expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer", 'user_data': db_user}

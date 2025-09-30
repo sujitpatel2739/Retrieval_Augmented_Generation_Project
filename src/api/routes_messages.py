@@ -29,11 +29,11 @@ class Query(BaseModel):
 
 @router.post("/")
 def create_message(
-    new_query: Query
+    new_query: Query,
+    current_user: Optional[User] = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Add a query to a collection and get AI response. Only persist to Postgres when authenticated."""
-    current_user: Optional[User] = Depends(get_current_user)
-    db: Session = Depends(get_db)
     # Get AI response from Weaviate
     rag_response = Workflow.get_rag_response(
         query=new_query.query,
@@ -92,11 +92,11 @@ def create_message(
 
 @router.get("/{collection_id}/")
 def get_messages(
-    collection_id: uuid.UUID
+    collection_id: uuid.UUID,
+    current_user: Optional[User] = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """List all messages in a collection. Only available from Postgres for authenticated users."""
-    current_user: Optional[User] = Depends(get_current_user)
-    db: Session = Depends(get_db)
     if not current_user:
         # Guest users do not have messages in Postgres
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required to list messages")
@@ -115,10 +115,10 @@ def delete_message(
     user_message_id: uuid.UUID,
     assistant_message_id: uuid.UUID,
     collection_id: uuid.UUID,
+    current_user: Optional[User] = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Delete a pair of messages (user + assistant). Requires authentication and ownership."""
-    current_user: Optional[User] = Depends(get_current_user)
-    db: Session = Depends(get_db)
     # Verify authentication provided by dependency
     # Attempt to delete both messages
     user_msg = crud_messages.get_message_by_id(db, message_id=user_message_id)

@@ -12,6 +12,8 @@ from src.db.crud import users as crud_users
 from src.db.models import User
 from src.core.security import get_current_user
 from src.workflow import Workflow
+import tempfile
+import os
 
 router = APIRouter(prefix="/collections", tags=["collections"])
 
@@ -79,7 +81,6 @@ def get_user_collections(user_id: uuid.UUID, current_user: User = Depends(get_cu
 
     return crud_collections.get_collections_by_user_id(db, user_id=current_user.id)
 
-
 @router.patch("/{collection_id}")
 def update_collection(
     collection_id: uuid.UUID,
@@ -115,8 +116,22 @@ def update_collection(
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update collection")
 
 
+async def save_upload_to_temp_and_get_size(upload: UploadFile, chunk_size: int = 1024*1024):
+    size = 0
+    # NamedTemporaryFile used in binary write mode; we return path for downstream processing
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        while True:
+            chunk = await upload.read(chunk_size)   # async read chunk
+            if not chunk:
+                break
+            tmp.write(chunk)
+            size += len(chunk)
+    # reset the UploadFile pointer if you need it elsewhere (not required if you use tmp file)
+    await upload.seek(0)
+    return tmp.name, size
+
 @router.post("/{collection_id}/upload")
-def upload_documents(
+async def upload_documents(
     collection_id: Optional[uuid.UUID] = None,
     file: UploadFile = File(...),
     title: str = Form('Untitled chat'),
@@ -135,10 +150,13 @@ def upload_documents(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported file type: {extension}")
     # if file.content_type not in ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'text/markdown', 'text/html']:
     #     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported file content type: {file.content_type}")
-    if file.spool_max_size and file.spool_max_size > 10 * 1024 * 1024:  # 10 MB limit
+    tmp_path, size = await save_upload_to_temp_and_get_size(file)
+    if size > 50 * 1024 * 1024:
+        # clean up tmp file, abort
+        os.remove(tmp_path)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File too large")
+    os.remove(tmp_path)
     
-
     # If collection_id provided, try to get Postgres collection
     db_collection = None
     if collection_id:
