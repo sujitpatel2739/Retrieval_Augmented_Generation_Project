@@ -32,29 +32,37 @@ class LLMQueryReformulator(BaseQueryReformulator):
         self.model = model
     
     def reformulate(self, query: str) -> ReformulatedQuery:
-        prompt = f"""Given the user query, reformulate it to correct any typos and extract key search terms.
-            Return your response in this JSON format:
-            {{
-                "refined_query": <reformulated question>,
-                "keywords": <["key1", "key2", "key3"]>
-            }}
-
-            Only return the JSON object, no other text.
-
-            User Query: {query}"""
-
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[{
-                "role": "user",
-                "content": prompt
-            }],
-            temperature=0,
-            response_format={ "type": "json_object" }
-        )
-        
-        result = json.loads(response.choices[0].message.content)
-        return ReformulatedQuery(
-            refined_text=result["refined_query"],
-            keywords=result["keywords"]
-        ) 
+        import re
+        prompt = f"""Given the user query, reformulate it to correct any typos and extract key search terms.\nReturn your response in this JSON format:\n{{\n    \"refined_query\": <reformulated question>,\n    \"keywords\": <[\"key1\", \"key2\", \"key3\"]>\n}}\nOnly return the JSON object, no other text.\nUser Query: {query}"""
+        last_exception = None
+        for attempt in range(3):
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{
+                    "role": "user",
+                    "content": prompt
+                }],
+                temperature=0,
+                response_format={ "type": "json_object" }
+            )
+            content = response.choices[0].message.content
+            try:
+                return ReformulatedQuery(
+                    refined_text=json.loads(content)["refined_query"],
+                    keywords=json.loads(content)["keywords"]
+                )
+            except Exception as e:
+                last_exception = e
+                # Try to extract JSON substring using regex
+                match = re.search(r'\{.*\}', content, re.DOTALL)
+                if match:
+                    try:
+                        result = json.loads(match.group(0))
+                        return ReformulatedQuery(
+                            refined_text=result.get("refined_query", query),
+                            keywords=result.get("keywords", [])
+                        )
+                    except Exception:
+                        continue
+        # If all attempts fail, raise last exception
+        raise ValueError(f"Could not parse LLM output as JSON after retries: {last_exception}\nOutput: {content}")

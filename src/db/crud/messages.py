@@ -41,3 +41,12 @@ def delete_message(db: Session, message_id: uuid.UUID) -> bool:
     db.delete(db_message)
     db.commit()
     return True
+
+def delete_messages_by_collection(db: Session, collection_id: uuid.UUID) -> int:
+    """Delete all messages linked to a particular collection.
+    Returns the number of messages deleted.
+    """
+    deleted_count = db.query(Message).filter(Message.collection_id == collection_id).delete(synchronize_session=False)
+    db.commit()
+    return deleted_count
+    

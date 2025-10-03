@@ -16,14 +16,14 @@ class UniversalExtractor():
         pass
 
     def execute(self, file_bytes: bytes, extension: str) -> List[str]:
-        print('Extractor called')
-        if extension.endswith(".pdf"):
+        ext = extension.lower()
+        if ext == "pdf":
             return self.extract_from_pdf(file_bytes)
-        elif extension.endswith(".txt"):
+        elif ext == "txt":
             return self.extract_from_txt(file_bytes)
-        elif extension.endswith(".docx"):
+        elif ext == "docx":
             return self.extract_from_docx(file_bytes)
-        elif extension.endswith(".html") or extension.endswith(".htm"):
+        elif ext in ["html", "htm"]:
             return self.extract_from_html(file_bytes)
         else:
             raise ValueError(f"Unsupported file type: {extension}")
@@ -32,11 +32,11 @@ class UniversalExtractor():
         buffer = io.BytesIO(file_bytes)
         doc = fitz.open(stream=buffer, filetype="pdf")
         print(doc)
-        extracted_blocks = []   
+        extracted_blocks = []
 
         for page in doc:
-            blocks = page.get_text("blocks")  # returns list of tuples: (x0, y0, x1, y1, "text", block_no)
-            sorted_blocks = sorted(blocks, key=lambda b: (b[1], b[0]))  # top-to-bottom, left-to-right
+            blocks = page.get_text("blocks")
+            sorted_blocks = sorted(blocks, key=lambda b: (b[1], b[0]))
 
             for block in sorted_blocks:
                 block_text = block[4].strip()

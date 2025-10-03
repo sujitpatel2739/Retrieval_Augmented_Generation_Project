@@ -73,16 +73,14 @@ def create_message(
 
     # Guest: return only generated response (not persisted)
     return {
+        "collection_id": new_query.collection_id,
+        "collection_name": new_query.collection_name,
         "user_message": {
             "id": str(uuid.uuid4()),
-            "collection_id": new_query.collection_id,
-            "collection_name": new_query.collection_name,
             "content": new_query.query,
         },
         "assistant_message": {
             "id": str(uuid.uuid4()),
-            "collection_id": new_query.collection_id,
-            "collection_name": new_query.collection_name,
             "content": rag_response.get("content", "Unable to get response!"),
             "confidence_score": rag_response.get("confidence_score", 0.49),
             "keywords": rag_response.get("keywords", []),
@@ -131,4 +129,4 @@ def delete_message(
     
     if not user_msg_del or not ai_msg_del:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Complete message pair not found!")
-    return None
+    return 

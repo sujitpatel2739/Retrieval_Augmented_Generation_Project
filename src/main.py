@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
     print("[LIFESPAN] Workflow initialized")
     yield
     # ---- SHUTDOWN ----
-    Workflow.shutdown()
+    Workflow.close_weaviate_conn(collection_name=None)
     print("[LIFESPAN] Workflow shut down")
 
 app = FastAPI(title="FastAPI Backend",

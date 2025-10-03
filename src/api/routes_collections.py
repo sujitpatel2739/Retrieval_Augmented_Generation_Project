@@ -9,6 +9,7 @@ from datetime import datetime
 from src.db.session import get_db
 from src.db.crud import collections as crud_collections
 from src.db.crud import users as crud_users
+from src.db.crud.messages import delete_messages_by_collection
 from src.db.models import User
 from src.core.security import get_current_user
 from src.workflow import Workflow
@@ -60,10 +61,8 @@ def get_collection(collection_id: uuid.UUID, current_user: User = Depends(get_cu
     # Ensure current user owns the collection
     if getattr(db_collection, 'user_id', None) != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this collection")
-    
-
-
     return db_collection
+
 
 @router.get("/users/{user_id}/collections/", response_model=List[CollectionResponse])
 def get_user_collections(user_id: uuid.UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -130,9 +129,9 @@ async def save_upload_to_temp_and_get_size(upload: UploadFile, chunk_size: int =
     await upload.seek(0)
     return tmp.name, size
 
-@router.post("/{collection_id}/upload")
+@router.post("/upload") 
 async def upload_documents(
-    collection_id: Optional[uuid.UUID] = None,
+    collection_id: Optional[uuid.UUID] = Form(None),
     file: UploadFile = File(...),
     title: str = Form('Untitled chat'),
     collection_name: Optional[str] = Form(None),
@@ -146,7 +145,9 @@ async def upload_documents(
     if not file:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No file uploaded")
     extension = file.filename.split('.')[-1].lower()
-    if extension not in ['pdf', 'docx', 'txt', 'md', 'html', 'htm']:
+    print(extension)
+    print(file.filename)
+    if not extension in ['pdf', 'docx', 'txt', 'md', 'html', 'htm']:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported file type: {extension}")
     # if file.content_type not in ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'text/markdown', 'text/html']:
     #     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported file content type: {file.content_type}")
@@ -157,34 +158,36 @@ async def upload_documents(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File too large")
     os.remove(tmp_path)
     
-    # If collection_id provided, try to get Postgres collection
-    db_collection = None
-    if collection_id:
-        db_collection = crud_collections.get_collection_by_id(db, id=collection_id)
-    else:
+    if not collection_id or not collection_name:
         # If no collection (guest or new), create Weaviate collection
         # Create in Weaviate (user_id if authenticated else None)
         user_id_for_weaviate = current_user.id if current_user else None
         wf_resp = create_collection_in_weaviate(user_id=user_id_for_weaviate, title=title)
-        weav_id = wf_resp.get('id')
-        weav_name = wf_resp.get('name')
-
-        # If authenticated, create Postgres record now (on first document upload)
-        if current_user:
-            db_collection = crud_collections.create_collection(
-                db=db,
-                id=weav_id,
-                user_id=current_user.id,
-                title=title,
-                name=weav_name,
-            )
-
+        if(wf_resp['status'] != 'SUCCESS'):
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=wf_resp['detail'])
+        collection_id = wf_resp.get('id')
+        collection_name = wf_resp.get('name')
+        
     # Upload document to Weaviate
-    upload_response = Workflow.process_document(collection_name, file, extension=extension)
-    
+    upload_response = await Workflow.process_document(collection_name, file, extension=extension)
     if upload_response.get('status') == "ERROR":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=upload_response.get('detail', 'Upload error'))
 
+    # If authenticated, create Postgres record now (on first document upload)
+    if current_user:
+        db_collection = crud_collections.create_collection(
+            db=db,
+            id=collection_id,
+            user_id=current_user.id,
+            title=title,
+            name=collection_name,
+        )
+            
+    # If collection_id provided, try to get Postgres collection
+    db_collection = None
+    if collection_id:
+        db_collection = crud_collections.get_collection_by_id(db, id=collection_id)
+    
     # If authenticated and db_collection exists, update Postgres doc count
     if current_user and db_collection:
         new_doc_count = upload_response.get('doc_count', 0) + getattr(db_collection, 'doc_count', 0)
@@ -199,15 +202,15 @@ async def upload_documents(
         new_doc_count = upload_response.get('doc_count', 0)
 
     return {
-        "id": str(db_collection.id) if db_collection else str(weav_id),
+        "id": str(db_collection.id) if db_collection else str(collection_id),
         "title": title,
-        'collection_name': db_collection.name if db_collection else weav_name,
+        'collection_name': db_collection.name if db_collection else collection_name,
         "doc_count": new_doc_count,
         'last_updated': upload_response.get('last_updated')
     }
 
 @router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_collection(collection_id: uuid.UUID, collection_name: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def delete_collection(collection_id: Optional[uuid.UUID], collection_name: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Delete collection. If the collection is Postgres-backed, require authentication and ownership.
     If it's a Weaviate-only (guest) collection, allow deletion without authentication.
     """
@@ -215,8 +218,7 @@ def delete_collection(collection_id: uuid.UUID, collection_name: str, current_us
     # Delete from Weaviate first
     wf_response = Workflow.delete_collection(collection_name)
 
-    # Must be authenticated and owner
-    if str(collection_id).startswith("temp"):
+    if not collection_id:
         return None
     if not current_user or not db:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required to delete this collection")
@@ -233,5 +235,7 @@ def delete_collection(collection_id: uuid.UUID, collection_name: str, current_us
 
     if not pg_success and not wf_response:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found in either database")
-
+    
+    del_messages_count = delete_messages_by_collection(db = db, collection_id=collection_id)    
+        
     return None

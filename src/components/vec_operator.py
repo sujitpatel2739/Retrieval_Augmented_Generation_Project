@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import List, Any, Dict, Optional
 import weaviate
 import weaviate.classes as wvc
@@ -9,11 +9,11 @@ from ..models import SearchResult, Document
 from ..config import Settings
 from .base_component import BaseComponent
 from datetime import datetime
-import os
-import json
 import uuid
 from cachetools import TTLCache
 from threading import Lock
+import random
+import string
 
 import logging
 logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
@@ -52,17 +52,27 @@ class VecOperator(BaseVecOperator):
         logging.info("Weaviate connected: %s", self.client.is_ready())
         
     
+    def get_unique_name(self, length, seed=None):
+        if seed is not None:
+            random.seed(seed)
+        gk = [
+            "Alpha","Beta","Gamma","Delta","Epsilon","Zeta","Eta","Theta","Iota","Kappa",
+            "Lambda","Mu","Nu","Xi","Omicron","Pi","Rho","Sigma","Tau","Upsilon",
+            "Phi","Chi","Psi","Omega","Astra","Boreas","Helios","Nyx","Aether","Cosmos","Lyra","Vega","Nova","Quasar",
+            "Zenith","Pulse","Novae","Nimbus","Echo","Vertex","Ion","Flux","Aegis","VertexPrime",
+            "Hyperion","Nebula","Cosmo"
+        ]   
+        alphabet = string.ascii_letters + string.digits
+        return random.choice(gk) + '_'.join(random.choice(alphabet) for _ in range(length))
+
+
     def create_collection(self, user_id: Optional[uuid.UUID]) -> Dict[str, Any]:
         """Create a new collection in Weaviate with specified schema."""
-        if self.client.collections.exists(collection_name):
-            return {"status": "ERROR", "detail": f"Collection {collection_name} already exists!"}
-        
-        collection_id = str(uuid.uuid4())
-        if user_id:
-            collection_name = user_id[:12] + '_' + collection_id[:12]
-        else:
-            collection_id = 'temp_' + str(uuid.uuid4())
-            collection_name = collection_id
+        collection_id = uuid.uuid4()
+        collection_name = self.get_unique_name(16)
+        if not user_id:
+            collection_id = 'temp_' + str(collection_id)
+            collection_name = 'temp_' + collection_name
         
         new_collection = self.client.collections.create(
             name=collection_name,
@@ -79,12 +89,11 @@ class VecOperator(BaseVecOperator):
         # cache the new collection wrapper so subsequent queries are fast
         try:
             self.get_or_cache_collection(collection_name)
-            return new_collection
-        except Exception:
+            return {'status': 'SUCCESS', 'id': collection_id, 'name': collection_name}
+        except Exception as e:
             # if fetching fails, ignore caching — operations will refetch on demand
             logging.exception("Failed to cache new collection %s", collection_name)
-
-        
+            return {'status': 'EXCEPTION', 'detail': f'{str(e)}'}
          
     def change_collection(self, collection_name: str):
         """Return collection wrapper for an existing collection (cached).
@@ -108,11 +117,10 @@ class VecOperator(BaseVecOperator):
             return {"status": "ERROR", "detail": f"Collection {collection_name} does not exist."}
             
 
-    def close_connection(self, collection_name: str, collection_id: str) -> None:
+    def close_connection(self, collection_name: Optional[str]) -> None:
         """Close the Weaviate client connection."""
-        if collection_id[:5] == 'temp_':
+        if collection_name:
             self.delete_collection(collection_name)
-        self.dump_collection()
         self.client.close()
         
         
@@ -125,13 +133,13 @@ class VecOperator(BaseVecOperator):
         """Add documents to the Weaviate collection."""
         
         objects = list()
-        
         for doc, embedding in zip(documents, embeddings):
-            objects.append(wvc.data.DataObject(
-            properties = {"text": doc.text,
-                          'metadata': doc.metadata},
-            vector = embedding.detach().cpu().numpy().tolist()
-            ))
+            # Only include allowed properties, pass vector separately
+            objects.append({
+                'properties': {"text": doc.text,
+                              'metadata': doc.metadata},
+                'vector': embedding.detach().cpu().numpy().tolist()
+            })
         # ensure collection exists and use cached wrapper
         try:
             collection = self.get_or_cache_collection(collection_name)
@@ -141,11 +149,21 @@ class VecOperator(BaseVecOperator):
         
         # Collection-level insert
         try:
-            collection.insert_many(objects)
+            with collection.batch.fixed_size(batch_size=50) as batch:
+                for obj in objects:
+                    # Pass vector as separate argument, not in properties
+                    batch.add_object(obj['properties'], vector=obj['vector'])
+                    if batch.number_errors > 50:
+                        return {"status": "ERROR", "detail": "Batch import stopped due to excessive errors."}
+            failed_objects = collection.batch.failed_objects
+            if failed_objects:
+                return {
+                    "status": "ERROR",
+                    "detail": f"Number of failed imports: {len(failed_objects)}."
+                }
         except Exception as e:
             logging.exception(f"Failed to insert objects into collection %s {collection_name}; error: %s: {str(e)}")
-            return {"status": "ERROR", "detail": "Insert failed"}
-        
+            return {"status": "EXCEPTION", "detail": f"{str(e)}"}
         return {"status": "SUCCESS", 'doc_count': len(documents), "last_updated": datetime.now().isoformat()}
         
 
@@ -237,7 +255,7 @@ class VecOperator(BaseVecOperator):
                 cached = self._collections_cache.get(collection_name)
                 if cached is not None:
                     return cached
-                coll = self.client.get(collection_name)
+                coll = self.client.collections.use(collection_name)
                 self._collections_cache[collection_name] = coll
                 return coll
             

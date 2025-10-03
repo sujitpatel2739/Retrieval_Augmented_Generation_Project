@@ -22,18 +22,19 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
 class UserResponse(BaseModel):
     id: uuid.UUID
     name: str
     email: str
+    created_at: datetime
 
     class Config:
         from_attributes = True
+
+class AuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user_data: UserResponse
 
 
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -46,7 +47,7 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
     return crud_users.create_user(db=db, name=user.name, email=user.email, password=user.password)
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=AuthResponse)
 def login_user(user: UserLogin, db: Session = Depends(get_db)):
     """Login user and return JWT token"""
     db_user = crud_users.authenticate_user(db, email=user.email, password=user.password)

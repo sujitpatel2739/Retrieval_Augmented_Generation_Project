@@ -61,7 +61,7 @@ class Workflow(BaseWorkflow):
         step_logs.append(reform_log)
 
         # Step 2: Retrieve
-        results, retrieve_log = cls.vec_operator.execute(reformulated.refined_text, collection_name = collection_name, top_k=top_k)
+        results, retrieve_log = cls.vec_operator.execute(reformulated['refined_text'], collection_name = collection_name, top_k=top_k)
         logger.log_step(retrieve_log)
         step_logs.append(retrieve_log)
 
@@ -75,15 +75,15 @@ class Workflow(BaseWorkflow):
         return response
 
     @classmethod
-    def create_collection(title: str, user_id: Optional[uuid.UUID]) -> None:
-        VecOperator.create_collection(user_id)
+    def create_collection(cls, user_id: Optional[uuid.UUID]) -> None:
+        return cls.vec_operator.create_collection(user_id = user_id)
     
     @classmethod
-    def process_document(cls, collection_name: str, file: Any, extension: str, max_token_len: int = 256, min_token_len: int = 8) -> Dict:
+    async def process_document(cls, collection_name: str, file: Any, extension: str, max_token_len: int = 256, min_token_len: int = 8) -> Dict:
         """Process and store document chunks in vector DB."""
         print("[Workflow] process_document called")
         try:
-            file_bytes = file.read()
+            file_bytes = await file.read()
         except Exception as e:
             return {"status": "EXCEPTION", "status_code": 400, "detail": f"Cannot read Bytes: {e}"}
 
@@ -107,10 +107,10 @@ class Workflow(BaseWorkflow):
             return {"status": "ERROR", "detail": "Vector operator not initialized."}
 
     @classmethod
-    def shutdown(cls):
+    def close_weaviate_conn(cls, collection_name: Optional[str]):
         """Graceful shutdown."""
         if cls.vec_operator:
-            cls.vec_operator.close_connection()
+            cls.vec_operator.close_connection(collection_name=collection_name)
         print("[Workflow] Vector DB connection closed!")
         
         
