@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, List
 
 @dataclass
 class Document:
@@ -14,8 +14,9 @@ class SearchResult:
 
 @dataclass
 class RAGResponse:
-    content: str
+    answer: str
     confidence_score: float
+    keywords: List[str]
     
 @dataclass
 class QueryStatus:

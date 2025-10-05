@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import func
 from ..models import Message
 from typing import Optional, List, Dict, Any
 import uuid
@@ -23,6 +24,19 @@ def create_message(
     db.commit()
     db.refresh(db_message)
     return db_message
+
+def update_message(db: Session, message_id: uuid.UUID, content: str, confidence_score: Optional[float], keywords: Optional[List[str]]) -> Message:
+    message = db.query(Message).filter(Message.id == message_id).first()
+    if not message:
+        return None
+    message.content = content
+    message.confidence_score = confidence_score if confidence_score else message.confidence_score
+    message.keywords = keywords if keywords else message.keywords
+    message.created_at = func.now()
+    
+    db.commit()
+    db.refresh(message)
+    return message
 
 def get_messages_by_collection_id(db: Session, collection_id: uuid.UUID) -> List[Message]:
     """Get all messages in a collection"""

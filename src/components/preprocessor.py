@@ -16,73 +16,89 @@ class UniversalExtractor():
         pass
 
     def execute(self, file_bytes: bytes, extension: str) -> List[str]:
-        ext = extension.lower()
-        if ext == "pdf":
-            return self.extract_from_pdf(file_bytes)
-        elif ext == "txt":
-            return self.extract_from_txt(file_bytes)
-        elif ext == "docx":
-            return self.extract_from_docx(file_bytes)
-        elif ext in ["html", "htm"]:
-            return self.extract_from_html(file_bytes)
-        else:
-            raise ValueError(f"Unsupported file type: {extension}")
+        try:
+            ext = extension.lower()
+            if ext == "pdf":
+                return self.extract_from_pdf(file_bytes)
+            elif ext == "txt":
+                return self.extract_from_txt(file_bytes)
+            elif ext == "docx":
+                return self.extract_from_docx(file_bytes)
+            elif ext in ["html", "htm"]:
+                return self.extract_from_html(file_bytes)
+            else:
+                raise ValueError(f"Unsupported file type: {extension}")
+        except Exception as e:
+            import logging
+            logging.exception(f"preprocessor.execute: Exception {str(e)}")
+            raise
 
     def extract_from_pdf(self, file_bytes: bytes) -> List[str]:
-        buffer = io.BytesIO(file_bytes)
-        doc = fitz.open(stream=buffer, filetype="pdf")
-        print(doc)
-        extracted_blocks = []
-
-        for page in doc:
-            blocks = page.get_text("blocks")
-            sorted_blocks = sorted(blocks, key=lambda b: (b[1], b[0]))
-
-            for block in sorted_blocks:
-                block_text = block[4].strip()
-                if block_text:
-                    cleaned = self.clean_block(block_text)
-                    if cleaned:
-                        extracted_blocks.append(cleaned)
-
-        return extracted_blocks
+        try:
+            buffer = io.BytesIO(file_bytes)
+            doc = fitz.open(stream=buffer, filetype="pdf")
+            print(doc)
+            extracted_blocks = []
+            for page in doc:
+                blocks = page.get_text("blocks")
+                sorted_blocks = sorted(blocks, key=lambda b: (b[1], b[0]))
+                for block in sorted_blocks:
+                    block_text = block[4].strip()
+                    if block_text:
+                        cleaned = self.clean_block(block_text)
+                        if cleaned:
+                            extracted_blocks.append(cleaned)
+            return extracted_blocks
+        except Exception as e:
+            import logging
+            logging.exception(f"preprocessor.extract_from_pdf: Exception {str(e)}")
+            raise
 
     def extract_from_txt(self, file_bytes: bytes) -> List[str]:
-        content = file_bytes.decode('utf-8', errors='ignore')
-        return content.split("\n\n")
+        try:
+            content = file_bytes.decode('utf-8', errors='ignore')
+            return content.split("\n\n")
+        except Exception as e:
+            import logging
+            logging.exception(f"preprocessor.extract_from_txt: Exception {str(e)}")
+            raise
 
     def extract_from_docx(self, file_bytes: bytes) -> List[str]:
-        buffer = io.BytesIO(file_bytes)
-        doc = docx.Document(buffer)
-        extracted_paragraphs = []
-
-        for para in doc.paragraphs:
-            block = para.text.strip()
-            if block:
-                cleaned = self.clean_block(block)
-                if cleaned:
-                    extracted_paragraphs.append(cleaned)
-
-        return extracted_paragraphs
+        try:
+            buffer = io.BytesIO(file_bytes)
+            doc = docx.Document(buffer)
+            extracted_paragraphs = []
+            for para in doc.paragraphs:
+                block = para.text.strip()
+                if block:
+                    cleaned = self.clean_block(block)
+                    if cleaned:
+                        extracted_paragraphs.append(cleaned)
+            return extracted_paragraphs
+        except Exception as e:
+            import logging
+            logging.exception(f"preprocessor.extract_from_docx: Exception {str(e)}")
+            raise
 
     def extract_from_html(self, file_bytes: bytes) -> List[str]:
-        raw_html = file_bytes.decode('utf-8', errors='ignore')
-        raw_html = raw_html.replace('<br>', '\n').replace('<br/>', '\n').replace('<br />', '\n')
-
-        soup = BeautifulSoup(raw_html, 'html.parser')
-        content_tags = soup.find_all(['h1', 'h2', 'h3', 'h4', 'p', 'li', 'blockquote'])
-
-        extracted_elements = []
-        for tag in content_tags:
-            block = tag.get_text(separator='\n', strip=True)
-            # Now split into logical lines
-            sub_blocks = re.split(r'\n+|•|- ', block)
-            for sub in sub_blocks:
-                cleaned = self.clean_block(sub)
-                if cleaned:
-                    extracted_elements.append(cleaned)
-
-        return extracted_elements
+        try:
+            raw_html = file_bytes.decode('utf-8', errors='ignore')
+            raw_html = raw_html.replace('<br>', '\n').replace('<br/>', '\n').replace('<br />', '\n')
+            soup = BeautifulSoup(raw_html, 'html.parser')
+            content_tags = soup.find_all(['h1', 'h2', 'h3', 'h4', 'p', 'li', 'blockquote'])
+            extracted_elements = []
+            for tag in content_tags:
+                block = tag.get_text(separator='\n', strip=True)
+                sub_blocks = re.split(r'\n+|•|- ', block)
+                for sub in sub_blocks:
+                    cleaned = self.clean_block(sub)
+                    if cleaned:
+                        extracted_elements.append(cleaned)
+            return extracted_elements
+        except Exception as e:
+            import logging
+            logging.exception(f"preprocessor.extract_from_html: Exception {str(e)}")
+            raise
 
     def clean_block(self, block: str) -> str:
         block = re.sub(r'\s+', ' ', block)  # collapse excessive whitespace
@@ -178,7 +194,7 @@ class SmartAdaptiveChunker():
         return refined_chunks
     
 
-    def delimiter_split(self, blocks: List[str], max_token_len: int = 256, min_token_len: int = 4) -> List[str]:
+    def delimiter_split(self, blocks: List[str], max_token_len: int, min_token_len: int) -> List[str]:
         print('delimiter_split called')
         chunks = []
         buffer = []

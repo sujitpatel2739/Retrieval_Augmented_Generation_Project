@@ -135,6 +135,8 @@ async def upload_documents(
     file: UploadFile = File(...),
     title: str = Form('Untitled chat'),
     collection_name: Optional[str] = Form(None),
+    min_token_len: int = Form(8),
+    max_token_len: int = Form(256),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -167,9 +169,12 @@ async def upload_documents(
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=wf_resp['detail'])
         collection_id = wf_resp.get('id')
         collection_name = wf_resp.get('name')
-        
+    # Validate token lengths
+    min_token_len = max(6, min_token_len)
+    max_token_len = max(24, min(max_token_len, 512))
+    
     # Upload document to Weaviate
-    upload_response = await Workflow.process_document(collection_name, file, extension=extension)
+    upload_response = await Workflow.process_document(collection_name, file, extension=extension, max_token_len=max_token_len, min_token_len=min_token_len)
     if upload_response.get('status') == "ERROR":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=upload_response.get('detail', 'Upload error'))
 

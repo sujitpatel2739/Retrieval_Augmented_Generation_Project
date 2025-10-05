@@ -68,103 +68,111 @@ class VecOperator(BaseVecOperator):
 
     def create_collection(self, user_id: Optional[uuid.UUID]) -> Dict[str, Any]:
         """Create a new collection in Weaviate with specified schema."""
-        collection_id = uuid.uuid4()
-        collection_name = self.get_unique_name(16)
-        if not user_id:
-            collection_id = 'temp_' + str(collection_id)
-            collection_name = 'temp_' + collection_name
-        
-        new_collection = self.client.collections.create(
-            name=collection_name,
-            properties=[
-                Property(name="text", data_type=DataType.TEXT),
-                Property(name="metadata", data_type=DataType.OBJECT,
-                         nested_properties=[
-                             Property(name="chunk_id", data_type=DataType.TEXT),
-                             Property(name="token_len", data_type=DataType.INT),
-                         ]),
-            ],
-        )
-
-        # cache the new collection wrapper so subsequent queries are fast
         try:
-            self.get_or_cache_collection(collection_name)
-            return {'status': 'SUCCESS', 'id': collection_id, 'name': collection_name}
+            collection_id = uuid.uuid4()
+            collection_name = self.get_unique_name(16)
+            if not user_id:
+                collection_id = 'temp_' + str(collection_id)
+                collection_name = 'temp_' + collection_name
+            new_collection = self.client.collections.create(
+                name=collection_name,
+                properties=[
+                    Property(name="text", data_type=DataType.TEXT),
+                    Property(name="metadata", data_type=DataType.OBJECT,
+                             nested_properties=[
+                                 Property(name="chunk_id", data_type=DataType.TEXT),
+                                 Property(name="token_len", data_type=DataType.INT),
+                             ]),
+                ],
+            )
+            try:
+                self.get_or_cache_collection(collection_name)
+                return {'status': 'SUCCESS', 'id': collection_id, 'name': collection_name}
+            except Exception as e:
+                logging.exception(f"vec_operator.create_collection: Failed to cache new collection {collection_name}")
+                raise RuntimeError(f"vec_operator.create_collection: Failed to cache new collection {collection_name}: {str(e)}")
         except Exception as e:
-            # if fetching fails, ignore caching — operations will refetch on demand
-            logging.exception("Failed to cache new collection %s", collection_name)
-            return {'status': 'EXCEPTION', 'detail': f'{str(e)}'}
+            logging.exception(f"vec_operator.create_collection: Exception {str(e)}")
+            raise
          
     def change_collection(self, collection_name: str):
         """Return collection wrapper for an existing collection (cached).
-
         Raises ValueError if collection doesn't exist.
         """
-        if not self.client.is_ready():
-            raise RuntimeError("Weaviate client is not ready")
-        
-        return self.get_or_cache_collection(collection_name) 
+        try:
+            if not self.client.is_ready():
+                raise RuntimeError("Weaviate client is not ready")
+            return self.get_or_cache_collection(collection_name)
+        except Exception as e:
+            logging.exception(f"vec_operator.change_collection: Exception {str(e)}")
+            raise
         
         
     def delete_collection(self, collection_name: str) -> Dict[str, Any]:
         """Delete a collection in Weaviate and invalidate cache."""
-        if self.client.collections.exists(collection_name):
-            self.client.collections.delete(collection_name)
-            # invalidate cache
-            self.invalidate_collection_cache(collection_name)
-            return {"status": "SUCCESS", "detail": f"Collection {collection_name} deleted."}
-        else:
-            return {"status": "ERROR", "detail": f"Collection {collection_name} does not exist."}
+        try:
+            if self.client.collections.exists(collection_name):
+                self.client.collections.delete(collection_name)
+                self.invalidate_collection_cache(collection_name)
+                return {"status": "SUCCESS", "detail": f"Collection {collection_name} deleted."}
+            else:
+                return {"status": "ERROR", "detail": f"Collection {collection_name} does not exist."}
+        except Exception as e:
+            logging.exception(f"vec_operator.delete_collection: Exception {str(e)}")
+            raise
             
 
     def close_connection(self, collection_name: Optional[str]) -> None:
         """Close the Weaviate client connection."""
-        if collection_name:
-            self.delete_collection(collection_name)
-        self.client.close()
+        try:
+            if collection_name:
+                self.delete_collection(collection_name)
+            self.client.close()
+        except Exception as e:
+            logging.exception(f"vec_operator.close_connection: Exception {str(e)}")
+            raise
         
         
     def retrieve(self, query: str, top_k: int, collection_name: str) -> List[SearchResult]:
-        semantic_results = self.semantic_search(query, top_k=top_k, collection_name=collection_name)
-        # return self.rerank(semantic_results)
-        return semantic_results
+        try:
+            semantic_results = self.semantic_search(query, top_k=top_k, collection_name=collection_name)
+            # return self.rerank(semantic_results)
+            return semantic_results
+        except Exception as e:
+            logging.exception(f"vec_operator.retrieve: Exception {str(e)}")
+            raise
 
     def add_documents(self, collection_name: str, documents: List[Document], embeddings: List[Any]) -> Dict[str, Any]:
         """Add documents to the Weaviate collection."""
-        
-        objects = list()
-        for doc, embedding in zip(documents, embeddings):
-            # Only include allowed properties, pass vector separately
-            objects.append({
-                'properties': {"text": doc.text,
-                              'metadata': doc.metadata},
-                'vector': embedding.detach().cpu().numpy().tolist()
-            })
-        # ensure collection exists and use cached wrapper
         try:
-            collection = self.get_or_cache_collection(collection_name)
-        except Exception:
-            if not self.client.collections.exists(collection_name):
-                return {"status": "ERROR", "detail": f"Collection {collection_name} does not exist!"}
-        
-        # Collection-level insert
-        try:
+            objects = list()
+            for doc, embedding in zip(documents, embeddings):
+                # Only include allowed properties, pass vector separately
+                objects.append({
+                    'properties': {"text": doc.text,
+                                  'metadata': doc.metadata},
+                    'vector': embedding.detach().cpu().numpy().tolist()
+                })
+            # ensure collection exists and use cached wrapper
+            try:
+                collection = self.get_or_cache_collection(collection_name)
+            except Exception:
+                if not self.client.collections.exists(collection_name):
+                    raise RuntimeError(f"vec_operator.add_documents: Collection {collection_name} does not exist!")
+            # Collection-level insert
             with collection.batch.fixed_size(batch_size=50) as batch:
                 for obj in objects:
                     # Pass vector as separate argument, not in properties
                     batch.add_object(obj['properties'], vector=obj['vector'])
                     if batch.number_errors > 50:
-                        return {"status": "ERROR", "detail": "Batch import stopped due to excessive errors."}
+                        raise RuntimeError("vec_operator.add_documents: Batch import stopped due to excessive errors.")
             failed_objects = collection.batch.failed_objects
             if failed_objects:
-                return {
-                    "status": "ERROR",
-                    "detail": f"Number of failed imports: {len(failed_objects)}."
-                }
+                raise RuntimeError(f"vec_operator.add_documents: Number of failed imports: {len(failed_objects)}.")
+            return {"status": "SUCCESS", 'doc_count': len(documents), "last_updated": datetime.now().isoformat()}
         except Exception as e:
-            logging.exception(f"Failed to insert objects into collection %s {collection_name}; error: %s: {str(e)}")
-            return {"status": "EXCEPTION", "detail": f"{str(e)}"}
-        return {"status": "SUCCESS", 'doc_count': len(documents), "last_updated": datetime.now().isoformat()}
+            logging.exception(f"vec_operator.add_documents: Exception {str(e)}")
+            raise
         
 
     def semantic_search(self, query: str, top_k: int, collection_name: str) -> List[SearchResult]:

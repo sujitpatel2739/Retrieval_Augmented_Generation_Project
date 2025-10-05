@@ -38,7 +38,8 @@ class LLMAnswerGenerator(BaseAnswerGenerator):
 
             {{
                 "answer": <Your detailed text response>,
-                "confidence_score": <A float between 0-1 indicating your overall confidence>,
+                "confidence_score": <A float between 0-1 indicating your overall confidence of the accurate answer (only if answer is possible from context, otherwise empty)>,
+                "keywords": <A python list containing important keywords from the answer (only if answer is possible from context, otherwise empty)>
             }}
 
             Only use information from the provided context. 
@@ -78,6 +79,7 @@ class LLMAnswerGenerator(BaseAnswerGenerator):
             {{
                 "answer": string,
                 "confidence_score": float between 0 and 1,
+                "keywords": Python list
             }}
             Respond with only the corrected JSON object.
             """
@@ -90,7 +92,8 @@ class LLMAnswerGenerator(BaseAnswerGenerator):
             except (json.JSONDecodeError, ValidationError):
                 # === Final Fallback ===
                 return RAGResponse(
-                    content="Unable to generate a valid structured response.",
-                    confidence_score=0.0
+                    answer="Unable to generate a valid structured response.",
+                    confidence_score=0.0,
+                    keywords=[]
                 )
         

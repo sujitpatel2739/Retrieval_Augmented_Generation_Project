@@ -45,8 +45,7 @@ class Workflow(BaseWorkflow):
         cls.chunker = SmartAdaptiveChunker(tokenizer_model_name, similarity_threshold)
         # cls.router = LLMRequestRouter(model=settings.router_model, api_key=OPENAI_API_KEY)
         cls.reformulator = LLMQueryReformulator(model=settings.reformulator_model, api_key=OPENAI_API_KEY)
-        cls.vec_operator = VecOperator(embedding_model_name="all-MiniLM-L6-v2"
-        )
+        cls.vec_operator = VecOperator(embedding_model_name="all-MiniLM-L6-v2")
         cls.answer_generator = LLMAnswerGenerator(model=settings.answer_model, api_key=OPENAI_API_KEY)
         cls.completion_threshold = completion_threshold
         print("[Workflow] Initialized successfully")
@@ -61,7 +60,7 @@ class Workflow(BaseWorkflow):
         step_logs.append(reform_log)
 
         # Step 2: Retrieve
-        results, retrieve_log = cls.vec_operator.execute(reformulated['refined_text'], collection_name = collection_name, top_k=top_k)
+        results, retrieve_log = cls.vec_operator.execute(reformulated.refined_text, collection_name = collection_name, top_k=top_k)
         logger.log_step(retrieve_log)
         step_logs.append(retrieve_log)
 
@@ -79,14 +78,14 @@ class Workflow(BaseWorkflow):
         return cls.vec_operator.create_collection(user_id = user_id)
     
     @classmethod
-    async def process_document(cls, collection_name: str, file: Any, extension: str, max_token_len: int = 256, min_token_len: int = 8) -> Dict:
+    async def process_document(cls, collection_name: str, file: Any, extension: str, max_token_len: int, min_token_len: int) -> Dict:
         """Process and store document chunks in vector DB."""
         print("[Workflow] process_document called")
         try:
             file_bytes = await file.read()
         except Exception as e:
             return {"status": "EXCEPTION", "status_code": 400, "detail": f"Cannot read Bytes: {e}"}
-
+  
         # Step 1: Extract
         document_blocks = cls.extractor.execute(file_bytes, extension)
         # Step 2: Clean
@@ -97,6 +96,7 @@ class Workflow(BaseWorkflow):
         adddoc_response = cls.vec_operator.add_documents(collection_name, chunks, embeddings)
 
         return adddoc_response
+    
 
     @classmethod
     def delete_collection(cls, collection_name: str) -> Dict:

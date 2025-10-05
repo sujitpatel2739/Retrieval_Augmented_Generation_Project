@@ -11,10 +11,10 @@ class Settings(BaseSettings):
     WEAVIATE_PORT: int = 8081
     
     # LLM Settings
-    router_model: str = "deepseek/deepseek-chat-v3-0324:free"
-    reformulator_model: str = "deepseek/deepseek-chat-v3-0324:free"
-    completion_model: str = "deepseek/deepseek-chat-v3-0324:free"
-    answer_model: str = "deepseek/deepseek-chat-v3-0324:free"
+    router_model: str = "tngtech/deepseek-r1t2-chimera:free"
+    reformulator_model: str = "tngtech/deepseek-r1t2-chimera:free"
+    completion_model: str = "tngtech/deepseek-r1t2-chimera:free"
+    answer_model: str = "tngtech/deepseek-r1t2-chimera:free"
     embedding_model: str = "all-MiniLM-L6-v2"
     
     # RAG Settings

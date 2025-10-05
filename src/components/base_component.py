@@ -19,13 +19,12 @@ class BaseComponent(ABC):
         """Execute with logging. Don't override this."""
         start_time = datetime.now()
         step_id = str(uuid.uuid4())
-        
+
         result = None
         log = None
         try:
             result = self._execute(*args, **kwargs)
             duration = (datetime.now() - start_time).total_seconds() * 1000
-            
             log = StepLog(
                 step_id=step_id,
                 step_name=self.name,
@@ -36,9 +35,7 @@ class BaseComponent(ABC):
                 duration_ms=duration,
                 success=True
             )
-            
         except Exception as e:
-            result = {"status": "EXCEPTION", "status_code": 400, "detail": str(e)}
             duration = (datetime.now() - start_time).total_seconds() * 1000
             log = StepLog(
                 step_id=step_id,
@@ -51,5 +48,6 @@ class BaseComponent(ABC):
                 success=False,
                 error=str(e)
             )
-        
+            # Raise the error so it can be handled at a higher level
+            raise
         return result, log
