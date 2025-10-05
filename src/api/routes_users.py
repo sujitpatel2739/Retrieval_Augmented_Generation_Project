@@ -47,6 +47,7 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
     return crud_users.create_user(db=db, name=user.name, email=user.email, password=user.password)
 
 
+
 @router.post("/login", response_model=AuthResponse)
 def login_user(user: UserLogin, db: Session = Depends(get_db)):
     """Login user and return JWT token"""
@@ -59,3 +60,12 @@ def login_user(user: UserLogin, db: Session = Depends(get_db)):
         data={"sub": str(db_user.id)}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer", 'user_data': db_user}
+
+
+# Token validation endpoint
+@router.get("/validate_token", response_model=UserResponse)
+def validate_token(current_user: Optional[User] = Depends(get_current_user)):
+    """Validate JWT token and return user data if valid."""
+    if not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    return current_user
