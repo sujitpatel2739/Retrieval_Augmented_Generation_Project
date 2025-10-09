@@ -11,23 +11,23 @@ class BaseAnswerGenerator(BaseComponent):
     """Base class for generating answers from context"""
     def __init__(self):
         super().__init__(name="answer_generator")
-    
-    def _execute(self, query: str, context: str) -> RAGResponse:
+
+    def _execute(self, query: str, context: str, temperature: float, max_tokens: int) -> RAGResponse:
         """Execute answer generation"""
-        return self.generate_answer(query, context)
-    
+        return self.generate_answer(query, context, temperature, max_tokens)
+
     @abstractmethod
-    def generate_answer(self, query: str, context: str) -> RAGResponse:
+    def generate_answer(self, query: str, context: str, temperature: float, max_tokens: int) -> RAGResponse:
         """Generate an answer using the retrieved context."""
         pass
 
-class LLMAnswerGenerator(BaseAnswerGenerator): 
+class LLMAnswerGenerator(BaseAnswerGenerator):
     def __init__(self, model: str = "deepseek/deepseek-chat-v3-0324:free", api_key: str = None):
         super().__init__()
         self.client = OpenAI(base_url = Settings().OPENROUTER_BASE_URL, api_key=api_key)
         self.model = model
-    
-    def generate_answer(self, query: str, context: str) -> RAGResponse:
+
+    def generate_answer(self, query: str, context: str, temperature: float, max_tokens: int) -> RAGResponse:
         """
         Generate an answer using the LLM with safe JSON parsing, schema validation,
         retry on failure, and graceful fallback.
@@ -56,8 +56,8 @@ class LLMAnswerGenerator(BaseAnswerGenerator):
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0,
-                max_tokens=1000,
+                temperature=temperature,
+                max_tokens=None
             )
             result = response.choices[0].message.content
             return result.replace("```json", "").replace("```", "").strip()

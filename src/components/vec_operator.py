@@ -24,12 +24,12 @@ class BaseVecOperator(BaseComponent):
     def __init__(self):
         super().__init__(name="retriever")
 
-    def _execute(self, query: str, top_k: int, collection_name: str) -> List[SearchResult]:
+    def _execute(self, query: str, top_k: int, collection_name: str, includeMetadata: bool, enableReranking) -> List[SearchResult]:
         """Execute retrieval"""
-        return self.retrieve(query, top_k, collection_name)
+        return self.retrieve(query, top_k, collection_name, includeMetadata, enableReranking)
 
     @abstractmethod
-    def retrieve(self, query: str, top_k: int, collection_name: str) -> List[SearchResult]:
+    def retrieve(self, query: str, top_k: int, collection_name: str, includeMetadata: bool, enableReranking: bool) -> List[SearchResult]:
         """Retrieve relevant context based on query""" 
         pass
     
@@ -131,12 +131,15 @@ class VecOperator(BaseVecOperator):
         except Exception as e:
             logging.exception(f"vec_operator.close_connection: Exception {str(e)}")
             raise
-        
-        
-    def retrieve(self, query: str, top_k: int, collection_name: str) -> List[SearchResult]:
+
+
+    def retrieve(self, query: str, top_k: int, collection_name: str, includeMetadata: bool, enableReranking: bool) -> List[SearchResult]:
+        if not includeMetadata and enableReranking:
+            raise ValueError("includeMetadata must be True for enableReranking to be True.")
         try:
-            semantic_results = self.semantic_search(query, top_k=top_k, collection_name=collection_name)
-            # return self.rerank(semantic_results)
+            semantic_results = self.semantic_search(query, top_k=top_k, collection_name=collection_name, includeMetadata=includeMetadata)
+            if enableReranking:
+                semantic_results = self.rerank(semantic_results)
             return semantic_results
         except Exception as e:
             logging.exception(f"vec_operator.retrieve: Exception {str(e)}")
@@ -175,7 +178,7 @@ class VecOperator(BaseVecOperator):
             raise
         
 
-    def semantic_search(self, query: str, top_k: int, collection_name: str) -> List[SearchResult]:
+    def semantic_search(self, query: str, top_k: int, collection_name: str, includeMetadata: bool) -> List[SearchResult]:
         """Perform semantic search using Weaviate."""
         query_vector = self.embedder.encode(query, normalize_embeddings=True, convert_to_tensor=True)
         query_vector = query_vector.detach().cpu().numpy().tolist()
@@ -191,8 +194,8 @@ class VecOperator(BaseVecOperator):
         return [
             SearchResult(
                 text=obj.properties['text'],
-                metadata=obj.properties.get('metadata'),
-                score=1.0 - obj.metadata.distance if obj.metadata and obj.metadata.distance is not None else None
+                metadata=obj.properties.get('metadata') if includeMetadata else None,
+                score=1.0 - obj.metadata.distance if obj.metadata and obj.metadata.distance and includeMetadata is not None else None
             )
             for obj in results
         ]

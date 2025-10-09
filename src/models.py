@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 @dataclass
 class Document:
@@ -9,8 +9,8 @@ class Document:
 @dataclass
 class SearchResult:
     text: str
-    metadata: Dict
-    score: float
+    metadata: Optional[Dict] = None
+    score: Optional[float] = None
 
 @dataclass
 class RAGResponse:

@@ -14,16 +14,6 @@ from src.core.security import get_current_user
 from src.workflow import Workflow
 
 router = APIRouter(prefix="/query", tags=["query"])
-class RetryRequest(BaseModel):
-    collection_id: uuid.UUID
-    user_message_id: uuid.UUID
-    assistant_message_id: uuid.UUID
-    query: str
-    collection_name: str
-    top_k: int = 10
-
-    class Config:
-        from_attributes = True
 
 # Pydantic schemas
 class Query(BaseModel):
@@ -31,7 +21,26 @@ class Query(BaseModel):
     collection_name: str
     query: str
     top_k: int = 10
-    
+    temperature: float = 0.7
+    maxTokens: int = 150
+    includeMetadata: bool = True
+    enableReranking: bool = False
+
+    class Config:
+        from_attributes = True
+        
+class RetryRequest(BaseModel):
+    collection_id: uuid.UUID
+    user_message_id: uuid.UUID
+    assistant_message_id: uuid.UUID
+    query: str
+    collection_name: str
+    top_k: int = 10
+    temperature: float = 0.7
+    maxTokens: int = 150
+    includeMetadata: bool = True
+    enableReranking: bool = False
+
     class Config:
         from_attributes = True
 
@@ -47,6 +56,10 @@ def create_message(
         query=new_query.query,
         collection_name=new_query.collection_name,
         top_k=new_query.top_k,
+        temperature=new_query.temperature,
+        maxTokens=new_query.maxTokens,
+        includeMetadata=new_query.includeMetadata,
+        enableReranking=new_query.enableReranking,
     )
     if not rag_response or not rag_response.answer:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error generating response from RAG service")
@@ -112,6 +125,10 @@ def retry_message(
         query=retry_req.query,
         collection_name=retry_req.collection_name,
         top_k=retry_req.top_k,
+        temperature=retry_req.temperature,
+        maxTokens=retry_req.maxTokens,
+        includeMetadata=retry_req.includeMetadata,
+        enableReranking=retry_req.enableReranking,
     )
     if not rag_response or not rag_response.answer:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error generating response from RAG service")
@@ -191,7 +208,7 @@ def get_messages(
             "content": msg.content,
             "confidence_score": msg.confidence_score,
             "keywords": msg.keywords,
-            "timestamp": msg.created_at.isoformat() if hasattr(msg, 'created_at') and msg.created_at else datetime.utcnow().isoformat(),
+            "created_at": msg.created_at.isoformat() if hasattr(msg, 'created_at') and msg.created_at else datetime.utcnow().isoformat(),
         }
     return [serialize_message(m) for m in messages]
 

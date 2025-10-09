@@ -51,7 +51,13 @@ class Workflow(BaseWorkflow):
         print("[Workflow] Initialized successfully")
     
     @classmethod
-    def get_rag_response(cls, query: str, collection_name: str, top_k: int = 10) -> Tuple[Optional[RAGResponse], List[StepLog]]:
+    def get_rag_response(cls, query: str, collection_name: str,
+            top_k: int,
+            temperature: float,
+            maxTokens: int,
+            includeMetadata: bool,
+            enableReranking: bool,
+    ) -> Tuple[Optional[RAGResponse], List[StepLog]]:
         step_logs: List[StepLog] = []
     
         # Step 1: Reformulate
@@ -60,14 +66,16 @@ class Workflow(BaseWorkflow):
         step_logs.append(reform_log)
 
         # Step 2: Retrieve
-        results, retrieve_log = cls.vec_operator.execute(reformulated.refined_text, collection_name = collection_name, top_k=top_k)
+        results, retrieve_log = cls.vec_operator.execute(reformulated.refined_text,
+                collection_name=collection_name, top_k=top_k,
+                includeMetadata=includeMetadata, enableReranking=enableReranking)
         logger.log_step(retrieve_log)
         step_logs.append(retrieve_log)
 
         # Step 3: Generate Answer
         context_texts = [result.text for result in results]
         context = " ".join(context_texts)
-        response, generate_log = cls.answer_generator.execute(query, context)
+        response, generate_log = cls.answer_generator.execute(query, context, temperature, maxTokens)
         logger.log_step(generate_log)
         step_logs.append(generate_log)
 
@@ -112,5 +120,4 @@ class Workflow(BaseWorkflow):
         if cls.vec_operator:
             cls.vec_operator.close_connection(collection_name=collection_name)
         print("[Workflow] Vector DB connection closed!")
-        
         
