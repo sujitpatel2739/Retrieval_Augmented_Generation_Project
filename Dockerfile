@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
     poppler-utils \
-    libgl1-mesa-glx \
+    libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy dependency file first to leverage Docker caching
@@ -21,15 +21,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the entire source code
 COPY src/ src/
 
-# Optional: you can skip copying .env if using Railway's Environment Variables dashboard
-# COPY .env .  
+# (Optional) Copy .env if you are not setting Railway environment variables manually
+# COPY .env .
 
 # Expose FastAPI port
 EXPOSE 8000
 
-# Environment variables (optional safety)
+# Environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Start the FastAPI app using Uvicorn
+# ✅ Start FastAPI with Uvicorn
 CMD ["uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "8000"]
