@@ -1,10 +1,8 @@
-# ✅ Use lightweight Python base image
 FROM python:3.10-slim
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies required by some Python packages (like psycopg2, fitz, etc.)
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
@@ -12,24 +10,20 @@ RUN apt-get update && apt-get install -y \
     libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency file first to leverage Docker caching
+# Install prebuilt CPU-only PyTorch (small ~500MB)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Copy and install requirements
 COPY requirements.txt .
+RUN pip install --no-cache-dir --prefer-binary -r requirements.txt
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the entire source code
+# Copy source code
 COPY src/ src/
 
-# (Optional) Copy .env if you are not setting Railway environment variables manually
-# COPY .env .
-
-# Expose FastAPI port
+# Expose port
 EXPOSE 8000
-
-# Environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# ✅ Start FastAPI with Uvicorn
+# Run app
 CMD ["uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "8000"]
