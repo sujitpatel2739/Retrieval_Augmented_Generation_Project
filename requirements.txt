@@ -54,7 +54,6 @@ pytest-asyncio>=0.22
 
 # Word (.docx) support
 python-docx>=0.8.11
-docx-python>=0.1.0
 
 # PDF support
 pymupdf>=1.26.4
