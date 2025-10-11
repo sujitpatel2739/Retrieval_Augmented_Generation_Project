@@ -59,6 +59,7 @@ docx-python>=0.1.0
 # PDF support
 pymupdf>=1.26.4
 fitz>=0.0.1.dev2
+frontend
 
 # HTML/XML parsing
 beautifulsoup4>=4.14.2
