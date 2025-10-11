@@ -26,9 +26,9 @@ weaviate-client>=4.0.0
 torch>=2.1.0
 sentence-transformers>=2.2.2
 transformers>=4.40.0
-numpy>=1.24.0
-scikit-learn>=1.7.2
-scipy>=1.16.2
+numpy>=1.21.0,<1.24.0
+scikit-learn>=1.0.2,<1.3.0
+scipy>=1.10.0,<1.16.0
 
 # OpenAI and HTTP
 openai>=0.27.0
@@ -66,7 +66,8 @@ lxml>=6.0.2
 soupsieve>=2.8
 
 # Dataframes and date utils
-pandas>=2.3.2
+## pandas 2.x requires Python >=3.8, but 2.3.x requires >=3.9. For best compatibility with Render Python 3.10, use:
+pandas>=1.5.3,<2.0.0
 python-dateutil>=2.9.0.post0
 pyyaml>=6.0.3
 
