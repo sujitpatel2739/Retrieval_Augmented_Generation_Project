@@ -104,6 +104,11 @@ class UniversalExtractor():
         block = re.sub(r'\s+', ' ', block)  # collapse excessive whitespace
         block = block.strip()
         return block if len(block) > 5 else ''
+    
+    def _clean_text(s: str) -> str:
+        s = s.replace('\u00A0', ' ')  # non-breaking spaces
+        s = re.sub(r'\s+', ' ', s).strip()
+        return s
 
 
 class NoiseRemover:
@@ -306,3 +311,24 @@ class SmartAdaptiveChunker():
 
         return refined_chunks, embeddings
     
+    
+    
+
+"""
+ok, regarding the context merging issue, I've thought of a method. You know in transformers, we use a positional encoding with the input that tells which neighbour token lies at how much proximity of the current token and the current context length includes before and after tokens of the current token.
+So, My plan is to use a proximity based positional encoding with every doc, lets say of length m. So while calculating  the context-similarity of semantically un-matched docs,  we will use positional encoding, along with semantic/cosine similarity, to determine which docs (any length) are very much in contextual similarity with the current doc. Because Im relying on the fact that the words/statements more close to the current statement, will most likely to be related contextually, and more far ones are most likely to relating with other context. and even if a contextual very similar statement is very far in the document, the semantic-similarity score will most  likely score it similar to the current doc.
+Correct me if im wrong.
+
+"""
+
+
+"""
+
+Option 1 — Self-Evaluating / Feedback-Loop RAG Idea: Build an automatic feedback loop where the model evaluates its own answers using an LLM-based “critic” (like a mini DeepSeek-R1 style system).
+Option 2 — Adaptive Context Compression Idea: Before sending context to LLM, summarize or compress retrieved docs using another LLM, keeping only the most relevant chunks.
+Option 3 — Active Learning from User Feedback Idea: Let users rate answers (thumbs up/down). The system retrains embeddings or adjusts context weighting accordingly.
+Option 4 --- Semantic similarity clustering + context merging + redundancy reduction
+Option 5 --- Contextual Reasoning Graph (Cognitive Map for RAG) Idea: Convert retrieved docs into nodes and edges, where edges represent reasoning relations like “supports”, “contradicts”, “explains”, “expands”.
+
+
+"""
