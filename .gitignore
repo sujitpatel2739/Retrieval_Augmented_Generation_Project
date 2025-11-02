@@ -1,6 +1,5 @@
 .env
 docker-compose.yml
-config.py
 
 venv/
 rag_frontend/
@@ -15,5 +14,5 @@ logs/*
 
 sample.pdf
 sample.docx
-sample.html
+sample.htm
 sample.txt
