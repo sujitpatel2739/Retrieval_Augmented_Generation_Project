@@ -6,18 +6,18 @@ from ..models import Document
 import uuid
 from transformers import AutoTokenizer
 from sentence_transformers import SentenceTransformer, util
-from difflib import SequenceMatcher
 
-from extractors import PDFExtractor, DOCXExtractor, TXTExtractor, HTMExtractor
+from .preprocessor_modules import PDFExtractor, DOCXExtractor, TXTExtractor, HTMExtractor, Cleaner
 
-class UniversalExtractor:
+class Preprocessor:
     def __init__(self):
-        self.pdf_extractor = PDFExtractor()
+        self.pdf_extractor = PDFExtractor(ignore_header_footer_freq = 0.6)
         self.docx_extractor = DOCXExtractor()
         self.txt_extractor = TXTExtractor()
         self.htm_extractor = HTMExtractor()
+        self.cleaner = Cleaner(min_words=3, min_similarity=0.88, strict=False)
 
-    def extract(self, file_bytes: bytes, file_type: str):
+    def extract(self, file_bytes: bytes, file_type: str) -> List[Dict[str, str]]:
         """Dispatch to correct extractor."""
         file_type = file_type.lower()
 
@@ -31,78 +31,9 @@ class UniversalExtractor:
             return self.htm_extractor.run(file_bytes)
         else:
             raise ValueError(f"Unsupported file type: {file_type}")
-
-
-class NoiseRemover:
-    """
-    Smart Noise Remover and Pre-Cleaner
-    Inherits from BasePreprocessor (which inherits from BaseComponent).
-
-    Purpose:
-    - Remove headers, footers, page numbers, boilerplate block, and repeated noise
-    - Preserve meaningful content, structure, and metadata
-    """
-
-    def execute(self, blocks: List[str], min_words: int = 4) -> List[str]:
-        print('NoiseRemover called')
-        cleaned_blocks = []
-        seen = set()
-
-        for block in blocks:
-            original = block
-
-            if not block:
-                continue
-            block = block.strip()
-
-            # Preserve dates like 2025-07-18
-            block = re.sub(r'(?<=\d)\s*[-/]\s*(?=\d)', '-', block)
-
-            # Preserve time like 12:04:52 or 12:04
-            block = re.sub(r'(?<=\d)\s*[:]\s*(?=\d)', ':', block)
-
-            # Remove common URLs, emails, phone numbers
-            block = re.sub(r'\b(?:https?://|www\.)\S+\b', '', block)
-            block = re.sub(r'\b[\w\.-]+@[\w\.-]+\.\w+\b', '', block)
-            # Remove Indian phone numbers
-            block = re.sub(r'\b(?:\+91[-\s]?|0)?[6-9]\d{9}\b', '', block)
-            # Remove general international-style phone numbers
-            block = re.sub(r'\b(?:\+[\d]{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b', '', block)
-
-            # Remove leading/trailing HTML/JSON/Tags/brackets etc.
-            block = re.sub(r'^<[^>]+>|<[^>]+>$', '', block)
-            block = re.sub(r'^[\[{(]+|[\]})]+$', '', block)
-
-            # Clean repeated punctuations but keep date/time/log symbols
-            block = re.sub(r'[^\w\s:/\-,]', '', block)  # keeps : / - , for dates and logs
-            block = re.sub(r'[^\w\s.,!?()\-+]', '', block) # other noisy symbols
-
-            # Remove extensionra spaces
-            block = re.sub(r'\s+', ' ', block).strip()
-
-            # Remove if only digits or random characters
-            if re.fullmatch(r'[\d\s]+', block) or re.fullmatch(r'[^\w\s]+', block):
-                continue
-
-            # Remove short blocks
-            if len(block.split()) < min_words:
-                continue
-
-            # Remove near-duplicates (approx match)
-            is_duplicate = False
-            for seen_block in seen:
-                similarity = SequenceMatcher(None, block, seen_block).ratio()
-                if similarity > 0.90:
-                    is_duplicate = True
-                    break
-
-            if is_duplicate:
-                continue
-
-            cleaned_blocks.append(block)
-            seen.add(block)
-
-        return cleaned_blocks
+        
+    def clean(self, blocks: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        return self.cleaner.execute(blocks)
 
 
 class SmartAdaptiveChunker():

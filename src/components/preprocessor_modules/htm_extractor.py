@@ -24,24 +24,27 @@ class HTMExtractor:
             
             results: List[Dict[str, str]] = []
             prev_text = ''
+            is_merging_bullets = False
+            
             for tag in content_tags:
                 text = tag.get_text(separator=' ', strip=True)
                 if not text:
                     continue
+                
                 cleaned = self.clean_block(text)
-                if not cleaned:
-                    continue
-                if tag == 'li':
-                    prev_text += cleaned
-                    continue
-                else:
+                section_type = self._infer_section_type(tag, cleaned)
+                
+                if section_type == "BulletPoint":
+                    prev_text += " " + cleaned
+                    is_merging_bullets = True
+                elif is_merging_bullets:
                     results.append({
                         "section_type": 'BulletPoint',
                         "content": prev_text
                     })
                     prev_text = cleaned
+                    is_merging_bullets = False
                     
-                section_type = self._infer_section_type(tag, cleaned)
                 results.append({
                     "section_type": section_type,
                     "content": cleaned

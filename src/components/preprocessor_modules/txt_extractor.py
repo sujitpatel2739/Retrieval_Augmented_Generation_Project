@@ -4,23 +4,13 @@ import logging
 from typing import List, Dict
 import os
 
-
-# Regex helpers
-NUMBERED_HEADING_RE = re.compile(r'^\s*\d+(?:\.\d+)*\s+[A-Za-z]')   # e.g. 1.4 Introduction
-BULLET_RE = re.compile(r'^\s*(?:[-\u2022\u2023\u25E6\*•]|[a-zA-Z]\)|\d+\)|\(\d+\))\s+')  # •, -, 1), etc.
-
-
-def _clean_text(s: str) -> str:
-    s = s.replace('\u00A0', ' ')
-    s = re.sub(r'\s+', ' ', s)
-    return s.strip()
-
-
 class TXTExtractor:
     """Improved extractor for TXT files — detects headings, topics, bullets, normal paragraphs."""
 
     def __init__(self):
-        pass
+        # Regex helpers
+        self.NUMBERED_HEADING_RE = re.compile(r'^\s*\d+(?:\.\d+)*\s+[A-Za-z]')
+        self.BULLET_RE = re.compile(r'^\s*(?:[-\u2022\u2023\u25E6\*•]|[a-zA-Z]\)|\d+\)|\(\d+\))\s+')
 
     def extract_from_txt(self, file_bytes: bytes) -> List[Dict[str, str]]:
         """
@@ -36,16 +26,18 @@ class TXTExtractor:
             paragraphs = [p.strip() for p in content.split("\n") if p.strip()]  # preserve paragraph separation
 
             results: List[Dict[str, str]] = []
+            prev_text = ""
+            is_merging_bullets = False
 
             for para in paragraphs:
-                cleaned = _clean_text(para)
+                cleaned = self._clean_text(para)
                 if not cleaned:
                     continue
 
                 section_type = "NormalText"
 
                 # 1️⃣ Detect numbered headings/topics/subtopics
-                if NUMBERED_HEADING_RE.match(cleaned):
+                if self.NUMBERED_HEADING_RE.match(cleaned):
                     dots = cleaned.split()[0].count('.')
                     if dots == 0:
                         section_type = "Topic"
@@ -55,7 +47,7 @@ class TXTExtractor:
                         section_type = "SubSubTopic"
 
                 # 2️⃣ Detect bullet points
-                elif BULLET_RE.match(cleaned):
+                elif self.BULLET_RE.match(cleaned):
                     section_type = "BulletPoint"
 
                 # 3️⃣ All-caps or short lines likely to be main headings
@@ -70,6 +62,17 @@ class TXTExtractor:
                 elif len(cleaned.split()) <= 8 and cleaned[0].isalpha() and cleaned[-1].isalpha() and cleaned == cleaned.title():
                     section_type = "Heading2"
 
+                if section_type == "BulletPoint":
+                    prev_text += " " + cleaned
+                    is_merging_bullets = True
+                elif is_merging_bullets:
+                    results.append({
+                        "section_type": 'BulletPoint',
+                        "content": prev_text
+                    })
+                    prev_text = cleaned
+                    is_merging_bullets = False
+
                 results.append({
                     "section_type": section_type,
                     "content": cleaned
@@ -80,3 +83,8 @@ class TXTExtractor:
         except Exception as e:
             logging.exception(f"SmartTxtExtractor.extract_from_txt: Exception {str(e)}")
             raise
+    
+    def _clean_text(self, s: str) -> str:
+        s = s.replace('\u00A0', ' ')
+        s = re.sub(r'\s+', ' ', s)
+        return s.strip()

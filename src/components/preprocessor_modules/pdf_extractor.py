@@ -6,15 +6,6 @@ from typing import List, Dict, Tuple, Any
 from collections import Counter
 import os
 
-NUMBERED_HEADING_RE = re.compile(r'^\s*\d+(?:\.\d+)*\s+')
-BULLET_RE = re.compile(r'^\s*(?:[-\u2022\u2023\u25E6\*•]|[a-zA-Z]\)|\d+\)|\(\d+\))\s+')
-PAGE_NUM_RE = re.compile(r'^\s*\d+\s*$')
-
-def _clean_text(s: str) -> str:
-    s = s.replace('\u00A0', ' ')  
-    s = re.sub(r'\s+', ' ', s).strip()
-    return s
-
 class PDFExtractor:
     def __init__(self, ignore_header_footer_freq: int = 0.6):
         """
@@ -22,6 +13,9 @@ class PDFExtractor:
                                    to be considered header/footer (0..1).
         """
         self.ignore_header_footer_freq = ignore_header_footer_freq
+        self.NUMBERED_HEADING_RE = re.compile(r'^\s*\d+(?:\.\d+)*\s+')
+        self.BULLET_RE = re.compile(r'^\s*(?:[-\u2022\u2023\u25E6\*•]|[a-zA-Z]\)|\d+\)|\(\d+\))\s+')
+        self.PAGE_NUM_RE = re.compile(r'^\s*\d+\s*$')
 
     def run(self, file_bytes: bytes) -> List[Dict[str, str]]:
         """
@@ -41,9 +35,9 @@ class PDFExtractor:
                 first = next((s['text'] for s in spans if s['text'].strip()), "")
                 last = next((s['text'] for s in reversed(spans) if s['text'].strip()), "")
                 if first:
-                    top_texts.append(_clean_text(first.lower()))
+                    top_texts.append(self._clean_text(first.lower()))
                 if last:
-                    bottom_texts.append(_clean_text(last.lower()))
+                    bottom_texts.append(self._clean_text(last.lower()))
 
         header_candidates = self._frequent_texts(top_texts, doc.page_count, self.ignore_header_footer_freq)
         footer_candidates = self._frequent_texts(bottom_texts, doc.page_count, self.ignore_header_footer_freq)
@@ -62,17 +56,21 @@ class PDFExtractor:
         footnote_size_threshold = max(6.0, median_font - 3.0)
 
         results: List[Dict[str, str]] = []
+        prev_text = ""
+        is_merging_bullets = False
+        prev_x0 = float('-inf')
+
         for page_index, spans in enumerate(pages_info):
             for s in spans:
                 raw = s['text'].strip()
                 if not raw:
                     continue
-                cleaned = _clean_text(raw)
+                cleaned = self._clean_text(raw)
 
                 low = cleaned.lower()
                 if low in header_candidates or low in footer_candidates:
                     continue
-                if PAGE_NUM_RE.match(cleaned):
+                if self.PAGE_NUM_RE.match(cleaned):
                     continue
 
                 if s['size'] <= footnote_size_threshold and len(cleaned) < 200:
@@ -80,7 +78,7 @@ class PDFExtractor:
 
                 section_type = "NormalText"
 
-                if NUMBERED_HEADING_RE.match(cleaned):
+                if self.NUMBERED_HEADING_RE.match(cleaned):
                     dots = cleaned.strip().split()[0].count('.')
                     if dots == 1:
                         section_type = "Topic"
@@ -95,11 +93,21 @@ class PDFExtractor:
                         section_type = "Heading2"
                 elif cleaned.isupper() and len(cleaned.split()) <= 8:
                     section_type = "Heading2"
-                elif BULLET_RE.match(cleaned):
+                elif self.BULLET_RE.match(cleaned):
                     section_type = "BulletPoint"
                 elif cleaned.endswith(":") and len(cleaned.split()) <= 12:
                     section_type = "Topic"
-
+                
+                if section_type == "BulletPoint":
+                    prev_text += " " + cleaned
+                    is_merging_bullets = True
+                    prev_x0 = min(s['x'], prev_x0)
+                elif is_merging_bullets:
+                    results.append({"section_type": 'BulletPoint', "content": prev_text, "x0": prev_x0, "y0": s['y']})
+                    prev_text = cleaned
+                    prev_x0 = s['x']
+                    is_merging_bullets = False
+                
                 results.append({"section_type": section_type, "content": cleaned, "x0": s['x'], "y0": s['y']})
 
         return self._post_process_merge(results)
@@ -197,3 +205,9 @@ class PDFExtractor:
             })
 
         return merged
+
+
+    def _clean_text(self, s: str) -> str:
+        s = s.replace('\u00A0', ' ')  
+        s = re.sub(r'\s+', ' ', s).strip()
+        return s

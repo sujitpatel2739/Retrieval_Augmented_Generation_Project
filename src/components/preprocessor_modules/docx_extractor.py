@@ -4,20 +4,13 @@ import logging
 from typing import List, Dict
 import docx
 import os
-NUMBERED_HEADING_RE = re.compile(r'^\s*\d+(?:\.\d+)*\s+[A-Za-z]')  
-BULLET_RE = re.compile(r'^\s*(?:[-\u2022\u2023\u25E6\*•]|[a-zA-Z]\)|\d+\)|\(\d+\))\s+')
-
-def _clean_text(s: str) -> str:
-    s = s.replace('\u00A0', ' ')
-    s = re.sub(r'\s+', ' ', s)
-    return s.strip()
-
 
 class DOCXExtractor:
     """Improved extractor for DOCX files, preserving paragraph order & section types."""
 
     def __init__(self):
-        pass
+        self.NUMBERED_HEADING_RE = re.compile(r'^\s*\d+(?:\.\d+)*\s+[A-Za-z]')  
+        self.BULLET_RE = re.compile(r'^\s*(?:[-\u2022\u2023\u25E6\*•]|[a-zA-Z]\)|\d+\)|\(\d+\))\s+')
 
     def extract_from_docx(self, file_bytes: bytes) -> List[Dict[str, str]]:
         """
@@ -38,16 +31,17 @@ class DOCXExtractor:
                 text = para.text.strip()
                 if not text:
                     continue
-                cleaned = _clean_text(text)
+                cleaned = self._clean_text(text)
                 if not cleaned:
                     continue
 
                 style_name = para.style.name if para.style else ""
 
+                prev_text = ""
+                is_merging_bullets = False
                 section_type = "NormalText"
 
-
-                if NUMBERED_HEADING_RE.match(cleaned):
+                if self.NUMBERED_HEADING_RE.match(cleaned):
                     dots = cleaned.split()[0].count('.')
                     if dots == 1:
                         section_type = "Topic"
@@ -62,7 +56,7 @@ class DOCXExtractor:
                         level = 1
                     section_type = f"Heading{level}"
 
-                elif BULLET_RE.match(cleaned):
+                elif self.BULLET_RE.match(cleaned):
                     section_type = "BulletPoint"
                 
                 elif cleaned.isupper() and len(cleaned.split()) <= 6:
@@ -70,6 +64,17 @@ class DOCXExtractor:
 
                 elif cleaned.endswith(":") and len(cleaned.split()) <= 10:
                     section_type = "Topic"
+                    
+                if section_type == "BulletPoint":
+                    prev_text += " " + cleaned
+                    is_merging_bullets = True
+                elif is_merging_bullets:
+                    results.append({
+                        "section_type": 'BulletPoint',
+                        "content": prev_text
+                    })
+                    prev_text = cleaned
+                    is_merging_bullets = False
 
                 results.append({
                     "section_type": section_type,
@@ -77,7 +82,7 @@ class DOCXExtractor:
                 })
 
             return results
-            return self._merge_normaltext(results)
+            # return self._merge_normaltext(results)
 
         except Exception as e:
             logging.exception(f"SmartDocxExtractor.extract_from_docx: Exception {str(e)}")
@@ -106,3 +111,8 @@ class DOCXExtractor:
                 "content": "\n\n".join(buffer)
             })
         return merged
+    
+    def _clean_text(self, s: str) -> str:
+        s = s.replace('\u00A0', ' ')
+        s = re.sub(r'\s+', ' ', s)
+        return s.strip()

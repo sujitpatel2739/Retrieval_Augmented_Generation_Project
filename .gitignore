@@ -6,6 +6,7 @@ rag_frontend/
 __pycache__/
 .pytest_cache/
 node_modules/
+tests/
 # ignore Pycharm/IntelliJ configuration files
 .idea
 
@@ -16,3 +17,5 @@ sample.pdf
 sample.docx
 sample.htm
 sample.txt
+
+readme.md
